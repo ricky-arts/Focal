@@ -1,6 +1,5 @@
 package com.focal.app.feature_set
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,18 +13,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focal.app.core.storage.FocalPreferenceStore
 import com.focal.app.core.theme.*
+import com.focal.app.feature_read.NewsCategory
 
 /**
  * 侧边独立展开的设置面板：
  * 纯图标与极简意象，包含：
- * 1. 订阅源偏好开关（资讯、抖音、B站、播客等）
- * 2. 身份对接工具与状态管理（豆包、Kimi、千问、元宝）
+ * 1. 资讯栏目偏好定制（综合、娱乐、体育、科技、财经、国际）
+ * 2. 全网平台源开关（今日头条、微博、百度、知乎、抖音、B站、番茄畅听、喜马拉雅等）
+ * 3. 身份对接工具与状态管理（豆包、Kimi、千问、元宝）
  */
 @Composable
 fun SettingsDrawerContent(
@@ -36,7 +36,7 @@ fun SettingsDrawerContent(
     Surface(
         modifier = Modifier
             .fillMaxHeight()
-            .width(320.dp),
+            .width(330.dp),
         color = InkSurface,
         tonalElevation = 8.dp
     ) {
@@ -46,7 +46,7 @@ fun SettingsDrawerContent(
                 .statusBarsPadding()
                 .padding(20.dp)
         ) {
-            // 顶栏：关闭图标与精简 Slogan
+            // 顶栏：关闭图标与精简标识
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -84,49 +84,107 @@ fun SettingsDrawerContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // 1. 各聚合内容源开关
+                // 1. 用户自定义关心的资讯栏目
                 item {
                     Text(
-                        text = "订阅源偏好",
+                        text = "资讯感兴趣栏目定制",
                         color = MistGrey,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
+
+                    NewsCategory.values().forEach { cat ->
+                        CategoryToggleItem(
+                            cat = cat,
+                            prefStore = prefStore
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+                }
+
+                // 2. 全网聚合内容源开关
+                item {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "全网聚合源启用",
+                        color = MistGrey,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
                     SourceToggleItem(
                         icon = Icons.Rounded.Article,
-                        name = "国内外热点 / RSS",
-                        key = "news_general",
+                        name = "今日头条 (Toutiao)",
+                        key = "toutiao",
                         prefStore = prefStore
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    SourceToggleItem(
+                        icon = Icons.Rounded.Whatshot,
+                        name = "微博热搜 (Weibo)",
+                        key = "weibo",
+                        prefStore = prefStore
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    SourceToggleItem(
+                        icon = Icons.Rounded.Search,
+                        name = "百度热搜 (Baidu)",
+                        key = "baidu",
+                        prefStore = prefStore
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    SourceToggleItem(
+                        icon = Icons.Rounded.Lightbulb,
+                        name = "知乎热榜 (Zhihu)",
+                        key = "zhihu",
+                        prefStore = prefStore
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    SourceToggleItem(
+                        icon = Icons.Rounded.Public,
+                        name = "国际热点 (Reddit/HN)",
+                        key = "reddit",
+                        prefStore = prefStore
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
                     SourceToggleItem(
                         icon = Icons.Rounded.SmartDisplay,
                         name = "哔哩哔哩 (Bilibili)",
                         key = "video_bilibili",
                         prefStore = prefStore
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
                     SourceToggleItem(
                         icon = Icons.Rounded.MusicVideo,
-                        name = "抖音 (Douyin)",
+                        name = "抖音精选 (Douyin)",
                         key = "video_douyin",
                         prefStore = prefStore
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    SourceToggleItem(
+                        icon = Icons.Rounded.MenuBook,
+                        name = "番茄畅听 / 有声书",
+                        key = "audio_fanqie",
+                        prefStore = prefStore
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
                     SourceToggleItem(
                         icon = Icons.Rounded.Podcasts,
-                        name = "有声书与公开播客",
+                        name = "喜马拉雅与开放播客",
                         key = "audio_podcast",
                         prefStore = prefStore
                     )
                 }
 
-                // 2. 身份对接工具 (针对强校验的 AI 平台)
+                // 3. 身份对接工具 (针对强校验的 AI 平台)
                 item {
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "AI 身份对接持久化",
                         color = MistGrey,
@@ -140,18 +198,21 @@ fun SettingsDrawerContent(
                         prefStore = prefStore,
                         onConnect = { onOpenAuthBridge("doubao") }
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
                     AuthPlatformItem(
                         name = "Kimi 智能助手",
                         platformKey = "kimi",
                         prefStore = prefStore,
                         onConnect = { onOpenAuthBridge("kimi") }
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
                     AuthPlatformItem(
                         name = "通义千问 (Qwen)",
                         platformKey = "qwen",
                         prefStore = prefStore,
                         onConnect = { onOpenAuthBridge("qwen") }
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
                     AuthPlatformItem(
                         name = "腾讯元宝 (Yuanbao)",
                         platformKey = "yuanbao",
@@ -161,6 +222,52 @@ fun SettingsDrawerContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun CategoryToggleItem(
+    cat: NewsCategory,
+    prefStore: FocalPreferenceStore
+) {
+    var enabled by remember { mutableStateOf(prefStore.isCategoryEnabled(cat.key, true)) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(InkSurfaceVariant)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = cat.icon,
+                contentDescription = null,
+                tint = if (enabled) BambooGreen else MistGrey,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = cat.displayName,
+                color = if (enabled) MoonWhite else MistGrey,
+                fontSize = 13.sp
+            )
+        }
+        Switch(
+            checked = enabled,
+            onCheckedChange = {
+                enabled = it
+                prefStore.setCategoryEnabled(cat.key, it)
+            },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MoonWhite,
+                checkedTrackColor = BambooGreen,
+                uncheckedThumbColor = MistGrey,
+                uncheckedTrackColor = InkBorder
+            )
+        )
     }
 }
 
@@ -178,7 +285,7 @@ fun SourceToggleItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(InkSurfaceVariant)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -187,9 +294,9 @@ fun SourceToggleItem(
                 imageVector = icon,
                 contentDescription = null,
                 tint = if (enabled) BambooGreen else MistGrey,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(18.dp)
             )
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = name,
                 color = if (enabled) MoonWhite else MistGrey,
@@ -226,7 +333,7 @@ fun AuthPlatformItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(InkSurfaceVariant)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {

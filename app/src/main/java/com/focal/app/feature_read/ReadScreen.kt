@@ -4,9 +4,11 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,7 +18,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,7 +27,9 @@ import kotlinx.coroutines.launch
 
 /**
  * 「阅」资讯聚合流：
- * 极简、图标准确、无冗余描述，以来源徽标和时间刻度呈现
+ * 1. 顶部提供纯图标栏目筛选（综合、娱乐、体育、科技、财经、国际）
+ * 2. 全网多源（头条、微博、知乎、百度、Reddit、HN）热度归一化排行榜
+ * 3. 极简卡片：序号高亮、平台微标、归一化热度指标
  */
 @Composable
 fun ReadScreen(
@@ -35,13 +38,21 @@ fun ReadScreen(
 ) {
     val context = LocalContext.current
     var feeds by remember { mutableStateOf(NewsRepository.getFallbackFeeds()) }
-    var selectedTag by remember { mutableStateOf("ALL") }
+    var selectedCategory by remember { mutableStateOf<NewsCategory?>(null) } // null 表示展示用户配置的综合统一榜
     var isLoading by remember { mutableStateOf(false) }
 
+    val coroutineScope = rememberCoroutineScope()
+
+    fun refreshData() {
+        coroutineScope.launch {
+            isLoading = true
+            feeds = NewsRepository.fetchUnifiedRankings(prefStore)
+            isLoading = false
+        }
+    }
+
     LaunchedEffect(Unit) {
-        isLoading = true
-        feeds = NewsRepository.fetchRealHotFeeds()
-        isLoading = false
+        refreshData()
     }
 
     Column(
@@ -67,67 +78,62 @@ fun ReadScreen(
                     )
                 }
                 Spacer(modifier = Modifier.width(4.dp))
-                // 呼吸圆点与板块意象
+                // 状态圆点
                 Box(
                     modifier = Modifier
                         .size(6.dp)
                         .clip(CircleShape)
-                        .background(BambooGreen)
+                        .background(if (isLoading) CinnabarRed else BambooGreen)
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val coroutineScope = rememberCoroutineScope()
-                IconButton(onClick = {
-                    coroutineScope.launch {
-                        isLoading = true
-                        feeds = NewsRepository.fetchRealHotFeeds()
-                        isLoading = false
-                    }
-                }) {
-                    Icon(
-                        imageVector = Icons.Rounded.Refresh,
-                        contentDescription = null,
-                        tint = MistGrey
+            IconButton(onClick = { refreshData() }) {
+                Icon(
+                    imageVector = Icons.Rounded.Refresh,
+                    contentDescription = null,
+                    tint = MistGrey
+                )
+            }
+        }
+
+        // 纯图标栏目筛选条（用户可快速在所启用的分类间切换）
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // "全网统一总榜" 纯图标
+            CategoryFilterChip(
+                isSelected = selectedCategory == null,
+                icon = Icons.Rounded.Whatshot,
+                token = "全",
+                onClick = { selectedCategory = null }
+            )
+
+            // 各细分品类图标
+            NewsCategory.values().forEach { cat ->
+                if (prefStore.isCategoryEnabled(cat.key, true)) {
+                    CategoryFilterChip(
+                        isSelected = selectedCategory == cat,
+                        icon = cat.icon,
+                        token = cat.token,
+                        onClick = { selectedCategory = cat }
                     )
                 }
             }
         }
 
-        // 纯图标与微标流筛选条
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            FilterChipIcon(
-                isSelected = selectedTag == "ALL",
-                icon = Icons.Rounded.FilterList,
-                onClick = { selectedTag = "ALL" }
-            )
-            FilterChipIcon(
-                isSelected = selectedTag == "WB",
-                icon = Icons.Rounded.TrendingUp,
-                onClick = { selectedTag = "WB" }
-            )
-            FilterChipIcon(
-                isSelected = selectedTag == "ZH",
-                icon = Icons.Rounded.Lightbulb,
-                onClick = { selectedTag = "ZH" }
-            )
-            FilterChipIcon(
-                isSelected = selectedTag == "HN",
-                icon = Icons.Rounded.Code,
-                onClick = { selectedTag = "HN" }
-            )
-        }
+        Spacer(modifier = Modifier.height(4.dp))
 
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // 资讯卡片列表
-        val filteredFeeds = remember(selectedTag, feeds) {
-            if (selectedTag == "ALL") feeds else feeds.filter { it.sourceTag == selectedTag }
+        // 过滤后按热度归一化排序的榜单列表
+        val displayList = remember(selectedCategory, feeds) {
+            if (selectedCategory == null) {
+                feeds
+            } else {
+                feeds.filter { it.category == selectedCategory }
+            }
         }
 
         LazyColumn(
@@ -135,8 +141,9 @@ fun ReadScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(filteredFeeds, key = { it.id }) { item ->
-                NewsFeedCard(
+            itemsIndexed(displayList, key = { _, item -> item.id }) { index, item ->
+                NewsRankCard(
+                    rank = index + 1,
                     item = item,
                     onClick = {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.url))
@@ -149,30 +156,40 @@ fun ReadScreen(
 }
 
 @Composable
-fun FilterChipIcon(
+fun CategoryFilterChip(
     isSelected: Boolean,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    token: String,
     onClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
-            .size(36.dp)
-            .clip(CircleShape)
+            .clip(RoundedCornerShape(12.dp))
             .background(if (isSelected) BambooGreenSoft else InkSurface)
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (isSelected) BambooGreen else MistGrey,
-            modifier = Modifier.size(18.dp)
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isSelected) BambooGreen else MistGrey,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = token,
+                color = if (isSelected) MoonWhite else MistGrey,
+                fontSize = 12.sp
+            )
+        }
     }
 }
 
 @Composable
-fun NewsFeedCard(
+fun NewsRankCard(
+    rank: Int,
     item: NewsItem,
     onClick: () -> Unit
 ) {
@@ -184,66 +201,84 @@ fun NewsFeedCard(
         colors = CardDefaults.cardColors(containerColor = InkSurface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp)
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // 顶端微标与时间
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // 热度排行榜位（Top 3 朱砂红高亮）
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(if (rank <= 3) CinnabarRed.copy(alpha = 0.15f) else InkSurfaceVariant),
+                contentAlignment = Alignment.Center
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 平台精简角标
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(InkSurfaceVariant)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
+                Text(
+                    text = "$rank",
+                    color = if (rank <= 3) CinnabarRed else MistGrey,
+                    fontSize = 13.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                // 顶端微标：来源平台（头条/微博/知乎/百度等）与归一化热度
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(InkSurfaceVariant)
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = item.sourceName,
+                                color = BambooGreen,
+                                fontSize = 10.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = item.sourceTag,
-                            color = BambooGreen,
-                            fontSize = 10.sp
+                            text = item.timeAgo,
+                            color = MistGrey,
+                            fontSize = 11.sp
                         )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = item.timeAgo,
-                        color = MistGrey,
-                        fontSize = 11.sp
-                    )
-                }
 
-                if (item.hotScore != null) {
+                    // 热度指标
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Rounded.LocalFireDepartment,
                             contentDescription = null,
-                            tint = CinnabarRed,
+                            tint = if (rank <= 3) CinnabarRed else MistGrey,
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(2.dp))
                         Text(
-                            text = item.hotScore,
-                            color = CinnabarRed,
+                            text = item.hotScoreDisplay,
+                            color = if (rank <= 3) CinnabarRed else MistGrey,
                             fontSize = 11.sp
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 资讯标题
+                Text(
+                    text = item.title,
+                    color = MoonWhite,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
             }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // 资讯标题
-            Text(
-                text = item.title,
-                color = MoonWhite,
-                fontSize = 15.sp,
-                lineHeight = 22.sp
-            )
         }
     }
 }

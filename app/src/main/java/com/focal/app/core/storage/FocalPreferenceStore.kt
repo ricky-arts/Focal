@@ -7,8 +7,9 @@ import androidx.security.crypto.MasterKey
 
 /**
  * 用户自定义喜好与三方身份持久化中心
- * 1. 喜好开关：各平台源（如抖音、B站、各大热搜、各AI模型）是否启用
- * 2. 身份对接：豆包、Kimi、千问、元宝网页登录拦截的鉴权 Session 硬件级加密存储
+ * 1. 栏目偏好：用户自定义勾选感兴趣的品类（综合、娱乐、体育、科技、财经、国际）
+ * 2. 平台源偏好：头条、微博、百度、知乎、抖音、B站、番茄畅听、播客等
+ * 3. 身份对接：豆包、Kimi、千问、元宝网页登录拦截的鉴权 Session 硬件级加密存储
  */
 class FocalPreferenceStore(context: Context) {
 
@@ -28,6 +29,20 @@ class FocalPreferenceStore(context: Context) {
         "focal_user_prefs",
         Context.MODE_PRIVATE
     )
+
+    // --- 资讯栏目偏好 ---
+    fun isCategoryEnabled(categoryKey: String, default: Boolean = true): Boolean {
+        return commonPrefs.getBoolean("cat_$categoryKey", default)
+    }
+
+    fun setCategoryEnabled(categoryKey: String, enabled: Boolean) {
+        commonPrefs.edit().putBoolean("cat_$categoryKey", enabled).apply()
+    }
+
+    fun getEnabledCategories(): Set<String> {
+        val allCats = listOf("general", "entertainment", "sports", "tech", "finance", "world")
+        return allCats.filter { isCategoryEnabled(it, true) }.toSet()
+    }
 
     // --- 平台源启用状态 ---
     fun isSourceEnabled(sourceKey: String, default: Boolean = true): Boolean {

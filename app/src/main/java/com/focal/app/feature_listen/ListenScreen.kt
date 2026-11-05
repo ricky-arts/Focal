@@ -225,11 +225,18 @@ fun AudioCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = item.categoryTag,
-                        color = BambooGreen,
-                        fontSize = 10.sp
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(BambooGreenSoft)
+                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = item.platformTag,
+                            color = BambooGreen,
+                            fontSize = 9.sp
+                        )
+                    }
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = item.narratorOrHost,
@@ -238,7 +245,7 @@ fun AudioCard(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = item.duration,
+                        text = item.playCount,
                         color = MistGrey,
                         fontSize = 11.sp
                     )
