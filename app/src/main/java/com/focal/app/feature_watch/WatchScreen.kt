@@ -210,6 +210,7 @@ fun WatchScreen(
                             sourceName = if (item.platformTag == "BILI") "哔哩哔哩" else "抖音精选",
                             timeAgo = item.duration,
                             hotScoreDisplay = item.playCount,
+                            subtitleExtra = item.danmakuCount ?: item.author,
                             thumbnailUrl = item.thumbnailUrl,
                             isVideo = true,
                             fallbackIcon = Icons.Rounded.VideoLibrary,

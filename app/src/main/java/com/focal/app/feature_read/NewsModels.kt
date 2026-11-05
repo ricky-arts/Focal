@@ -22,12 +22,13 @@ data class NewsItem(
 
 /**
  * 资讯全网多源调度与分页聚合仓库
- * 增强：网络容错、多源深度保障、绝无空列表
+ * 包含：今日头条、微博热搜、百度热搜、知乎热榜、Reddit
  */
 object NewsRepository {
 
     private val toutiaoParser = ToutiaoSourceParser()
     private val weiboParser = WeiboSourceParser()
+    private val baiduParser = BaiduSourceParser()
     private val zhihuParser = ZhihuSourceParser()
     private val redditParser = RedditSourceParser()
 
@@ -38,12 +39,13 @@ object NewsRepository {
     ): List<NewsItem> = withContext(Dispatchers.IO) {
         val enabledCats = prefStore.getEnabledCategories()
 
-        val ttDeferred = async { toutiaoParser.fetchItems(page, pageSize) }
-        val wbDeferred = async { weiboParser.fetchItems(page, pageSize) }
-        val zhDeferred = async { zhihuParser.fetchItems(page, pageSize) }
-        val rdDeferred = async { redditParser.fetchItems(page, pageSize) }
+        val ttDeferred = async { if (prefStore.isSourceEnabled("toutiao", true)) toutiaoParser.fetchItems(page, pageSize) else emptyList() }
+        val wbDeferred = async { if (prefStore.isSourceEnabled("weibo", true)) weiboParser.fetchItems(page, pageSize) else emptyList() }
+        val bdDeferred = async { if (prefStore.isSourceEnabled("baidu", true)) baiduParser.fetchItems(page, pageSize) else emptyList() }
+        val zhDeferred = async { if (prefStore.isSourceEnabled("zhihu", true)) zhihuParser.fetchItems(page, pageSize) else emptyList() }
+        val rdDeferred = async { if (prefStore.isSourceEnabled("reddit", true)) redditParser.fetchItems(page, pageSize) else emptyList() }
 
-        val allLists = awaitAll(ttDeferred, wbDeferred, zhDeferred, rdDeferred)
+        val allLists = awaitAll(ttDeferred, wbDeferred, bdDeferred, zhDeferred, rdDeferred)
         val aggregated = allLists.flatten().toMutableList()
 
         if (aggregated.isEmpty()) {
@@ -96,6 +98,7 @@ object NewsRepository {
         return listOf(
             NewsItem("tt_s_$page", "今日头条精选：全国新一轮扩内需促消费政策落地，文旅产业迎全面繁荣", "今日头条", "TT", NewsCategory.GENERAL, "热议", base + 800000L, "980w", "https://www.toutiao.com", "https://picsum.photos/seed/tt_s$page/300/200"),
             NewsItem("wb_s_$page", "神舟载人航天最新实验成果发布：太空生命科学取得里程碑式突破", "微博热搜", "WB", NewsCategory.TECH, "爆", base + 600000L, "960w", "https://s.weibo.com", "https://picsum.photos/seed/wb_s$page/300/200"),
+            NewsItem("bd_s_$page", "全网聚焦：高科技制造业前三季度投资增长强劲，高端装备制造加快布局", "百度热搜", "BD", NewsCategory.FINANCE, "热榜", base + 500000L, "950w", "https://www.baidu.com", "https://picsum.photos/seed/bd_s$page/300/200"),
             NewsItem("zh_s_$page", "如何评价当下大模型轻量化端侧部署演进趋势？千亿参数本地跑通", "知乎", "ZH", NewsCategory.TECH, "深度", base + 400000L, "940w", "https://www.zhihu.com", "https://picsum.photos/seed/zh_s$page/300/200"),
             NewsItem("rd_s_$page", "Global Clean Energy Milestone: Solar and Wind Cross Generation Record", "Reddit", "RD", NewsCategory.WORLD, "World", base + 200000L, "5.2kup", "https://reddit.com", "https://picsum.photos/seed/rd_s$page/300/200"),
             NewsItem("tt_s2_$page", "新赛季羽毛球大师赛中国队全线告捷，国羽双打强势会师冠亚军决赛", "今日头条", "TT", NewsCategory.SPORTS, "体育", base + 100000L, "910w", "https://www.toutiao.com", "https://picsum.photos/seed/tt_s2$page/300/200"),

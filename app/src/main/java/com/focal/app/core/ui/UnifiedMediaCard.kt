@@ -23,12 +23,13 @@ import com.focal.app.core.network.FocalHttpClient
 import com.focal.app.core.theme.FocalDimens
 
 /**
- * 全板块统一卡片布局规范：
- * 【左侧固定比例缩略图区域 + 右侧文字信息区域】
+ * 全板块统一卡片布局规范 (吸收 BiliPai 影视级卡片设计)：
+ * 【左侧固定比例高清缩略图 + 右侧文字信息区域】
  * 1. 缩略图集成 Coil 异步加载 + 内存/磁盘双重缓存；
- * 2. 视频类自动叠放播放小图标，图集类自动叠放图集小微标；
- * 3. 无图/加载失败展示柔和 Material 3 矢量占位图（杜绝生硬空白黑块）；
- * 4. 右侧两端规整对齐：上部标题 (2行)+ 底部【来源微标 + 时间 + 热度】。
+ * 2. 视频类自动叠放半透明播放图标与右下角半透明时长徽标；
+ * 3. 图集类自动叠放图集小微标；
+ * 4. 无图/加载失败展示柔和 Material 3 矢量占位图（杜绝生硬空白黑块）；
+ * 5. 右侧两端规整对齐：上部标题 (2行)+ 底部【来源微标 + 时间/UP主 + 播放量/弹幕数/热度】。
  */
 @Composable
 fun UnifiedMediaCard(
@@ -36,12 +37,13 @@ fun UnifiedMediaCard(
     sourceName: String,
     timeAgo: String,
     hotScoreDisplay: String,
+    subtitleExtra: String? = null, // 弹幕数或辅助元数据
     rank: Int? = null,
     thumbnailUrl: String?,
     isVideo: Boolean = false,
     isGallery: Boolean = false,
     fallbackIcon: ImageVector = Icons.Rounded.Article,
-    thumbWidth: Dp = 108.dp,
+    thumbWidth: Dp = 116.dp,
     thumbHeight: Dp = 76.dp,
     onClick: () -> Unit
 ) {
@@ -120,6 +122,22 @@ fun UnifiedMediaCard(
                             modifier = Modifier.size(18.dp)
                         )
                     }
+
+                    // 右下角半透明悬浮时长徽标 (BiliPai 风格)
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(4.dp),
+                        shape = FocalDimens.shapeTag,
+                        color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.65f)
+                    ) {
+                        Text(
+                            text = timeAgo,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
                 }
 
                 // 如果是图集内容，在缩略图右下角叠放图集小胶囊
@@ -186,7 +204,7 @@ fun UnifiedMediaCard(
                     )
                 }
 
-                // 底部元信息栏：来源 + 时间 + 热度
+                // 底部元信息栏：来源 + 时间 + 热度/播放量/弹幕
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -204,17 +222,26 @@ fun UnifiedMediaCard(
                                 modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = timeAgo,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        if (!isVideo) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = timeAgo,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else if (!subtitleExtra.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = subtitleExtra,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                            )
+                        }
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Rounded.LocalFireDepartment,
+                            imageVector = if (isVideo) Icons.Rounded.Visibility else Icons.Rounded.LocalFireDepartment,
                             contentDescription = null,
                             tint = if (rank != null && rank <= 3) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(13.dp)
