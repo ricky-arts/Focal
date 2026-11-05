@@ -1,37 +1,32 @@
 package com.focal.app.feature_read
 
 import androidx.compose.animation.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.focal.app.core.content.ContentType
 import com.focal.app.core.content.NativeContentExtractor
 import com.focal.app.core.content.StructuredContent
 import com.focal.app.core.storage.FocalPreferenceStore
 import com.focal.app.core.theme.FocalDimens
+import com.focal.app.core.ui.UnifiedMediaCard
 import kotlinx.coroutines.launch
 
 /**
- * Material 3 官方规范「阅」界面重构：
- * 1. 严格使用 MaterialTheme.colorScheme 与 FocalTypography，杜绝硬编码颜色
- * 2. 统一圆角规范 (卡片 12dp, 标签 4dp)，轻微柔和 elevation 1~2dp
- * 3. 规整左右 16dp 安全内边距与 8/16dp 间距模数
- * 4. 点击后由 NativeContentExtractor 提取结构化数据，分流原生渲染，绝不外跳浏览器或 WebView
+ * 优化重构「阅」资讯板块：
+ * 1. 采用全板块统一左图右文卡片 (UnifiedMediaCard)，优先展示各源首图/封面缩略图；
+ * 2. 支持下拉刷新 (Refresh) 与上滑触底自动加载更多 (Pagination)；
+ * 3. 规整 M3 规范，数据拉取失败或为空时给出友好交互与一键重试。
  */
 @Composable
 fun ReadScreen(
@@ -39,17 +34,57 @@ fun ReadScreen(
     onOpenDrawer: () -> Unit,
     onOpenDetail: (StructuredContent) -> Unit
 ) {
-    var feeds by remember { mutableStateOf(NewsRepository.getFallbackFeeds()) }
+    var feeds by remember { mutableStateOf<List<NewsItem>>(emptyList()) }
     var selectedCategory by remember { mutableStateOf<NewsCategory?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+    var isLoadingMore by remember { mutableStateOf(false) }
+    var currentPage by remember { mutableIntStateOf(1) }
+    var hasMore by remember { mutableStateOf(true) }
 
     val coroutineScope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
 
+    // 初始或刷新数据
     fun refreshData() {
         coroutineScope.launch {
             isLoading = true
-            feeds = NewsRepository.fetchUnifiedRankings(prefStore)
+            currentPage = 1
+            hasMore = true
+            val items = NewsRepository.fetchUnifiedRankings(prefStore, page = 1)
+            feeds = items
             isLoading = false
+        }
+    }
+
+    // 分页加载更多
+    fun loadMoreData() {
+        if (isLoadingMore || !hasMore) return
+        coroutineScope.launch {
+            isLoadingMore = true
+            val nextPage = currentPage + 1
+            val moreItems = NewsRepository.fetchUnifiedRankings(prefStore, page = nextPage)
+            if (moreItems.isEmpty()) {
+                hasMore = false
+            } else {
+                currentPage = nextPage
+                feeds = feeds + moreItems
+            }
+            isLoadingMore = false
+        }
+    }
+
+    // 触底监听自动触发加载更多
+    val shouldLoadMore = remember {
+        derivedStateOf {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            val lastVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            totalItems > 0 && lastVisibleItemIndex >= totalItems - 2
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore.value) {
+        if (shouldLoadMore.value && !isLoading && !isLoadingMore && hasMore) {
+            loadMoreData()
         }
     }
 
@@ -97,7 +132,7 @@ fun ReadScreen(
             }
         }
 
-        // M3 栏目 FilterChips 滚动条
+        // 栏目 FilterChips 滚动条
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -126,13 +161,13 @@ fun ReadScreen(
 
         Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
 
-        // 数据列表与骨架屏
+        // 列表区与分页
         AnimatedContent(
-            targetState = isLoading,
+            targetState = isLoading && feeds.isEmpty(),
             transitionSpec = { fadeIn() togetherWith fadeOut() },
-            label = "feedTransition"
-        ) { loading ->
-            if (loading && feeds.isEmpty()) {
+            label = "feedLoadingTransition"
+        ) { initialLoading ->
+            if (initialLoading) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -143,12 +178,40 @@ fun ReadScreen(
                         M3SkeletonCard()
                     }
                 }
+            } else if (feeds.isEmpty()) {
+                // 空状态与重试
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(FocalDimens.spaceLarge),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Rounded.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
+                        Text(
+                            text = "未获取到该栏目内容或网络受限",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
+                        FilledTonalButton(onClick = { refreshData() }) {
+                            Text("点击重新抓取")
+                        }
+                    }
+                }
             } else {
                 val displayList = remember(selectedCategory, feeds) {
                     if (selectedCategory == null) feeds else feeds.filter { it.category == selectedCategory }
                 }
 
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
                         start = FocalDimens.pageHorizontalPadding,
@@ -159,9 +222,23 @@ fun ReadScreen(
                     verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)
                 ) {
                     itemsIndexed(displayList, key = { _, item -> item.id }) { index, item ->
-                        M3NewsCard(
+                        UnifiedMediaCard(
+                            title = item.title,
+                            sourceName = item.sourceName,
+                            timeAgo = item.timeAgo,
+                            hotScoreDisplay = item.hotScoreDisplay,
                             rank = index + 1,
-                            item = item,
+                            thumbnailUrl = item.thumbnailUrl,
+                            isVideo = false,
+                            isGallery = item.title.contains("图集") || item.title.contains("组图"),
+                            fallbackIcon = when (item.category) {
+                                NewsCategory.TECH -> Icons.Rounded.Memory
+                                NewsCategory.ENTERTAINMENT -> Icons.Rounded.TheaterComedy
+                                NewsCategory.SPORTS -> Icons.Rounded.SportsBasketball
+                                NewsCategory.FINANCE -> Icons.Rounded.TrendingUp
+                                NewsCategory.WORLD -> Icons.Rounded.Public
+                                else -> Icons.Rounded.Article
+                            },
                             onClick = {
                                 coroutineScope.launch {
                                     val result = NativeContentExtractor.extractContent(
@@ -178,6 +255,45 @@ fun ReadScreen(
                                 }
                             }
                         )
+                    }
+
+                    // 底部上滑加载更多指示器
+                    item {
+                        if (isLoadingMore) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = FocalDimens.spaceMedium),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+                                    Text(
+                                        text = "正在深度挖掘更多全网热点...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        } else if (!hasMore) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = FocalDimens.spaceMedium),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "— 已汇聚全网最新全部内容 —",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -227,132 +343,11 @@ fun M3CategoryChip(
 }
 
 @Composable
-fun M3NewsCard(
-    rank: Int,
-    item: NewsItem,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = FocalDimens.shapeCard,
-        elevation = CardDefaults.cardElevation(defaultElevation = FocalDimens.elevationSubtle),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(FocalDimens.spaceMedium),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (rank <= 3) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "$rank",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (rank <= 3) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(modifier = Modifier.width(FocalDimens.spaceMedium))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = FocalDimens.shapeTag,
-                            color = MaterialTheme.colorScheme.secondaryContainer
-                        ) {
-                            Text(
-                                text = item.sourceName,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
-                        Text(
-                            text = item.timeAgo,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Rounded.LocalFireDepartment,
-                            contentDescription = null,
-                            tint = if (rank <= 3) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = item.hotScoreDisplay,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (rank <= 3) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
-
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            Spacer(modifier = Modifier.width(FocalDimens.spaceMedium))
-            Surface(
-                modifier = Modifier
-                    .size(64.dp)
-                    .clip(FocalDimens.shapeButton),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                tonalElevation = FocalDimens.elevationSubtle
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = when (item.category) {
-                            NewsCategory.TECH -> Icons.Rounded.Memory
-                            NewsCategory.ENTERTAINMENT -> Icons.Rounded.TheaterComedy
-                            NewsCategory.SPORTS -> Icons.Rounded.SportsBasketball
-                            NewsCategory.FINANCE -> Icons.Rounded.TrendingUp
-                            NewsCategory.WORLD -> Icons.Rounded.Public
-                            else -> Icons.Rounded.Article
-                        },
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                        modifier = Modifier.size(FocalDimens.iconSizeStandard)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun M3SkeletonCard() {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(76.dp),
+            .height(84.dp),
         shape = FocalDimens.shapeCard,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)

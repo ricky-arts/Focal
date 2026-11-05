@@ -74,6 +74,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:okhttp-sse:4.12.0")
 
+    // Image Loading & Caching (Coil for Jetpack Compose)
+    implementation("io.coil-kt:coil-compose:2.5.0")
+
     // Security & Encrypted storage
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 

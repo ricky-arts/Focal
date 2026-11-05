@@ -1,11 +1,11 @@
 package com.focal.app.feature_listen
 
 import androidx.compose.animation.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -13,29 +13,78 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.focal.app.core.storage.FocalPreferenceStore
 import com.focal.app.core.theme.FocalDimens
+import com.focal.app.core.ui.UnifiedMediaCard
+import kotlinx.coroutines.launch
 
 /**
- * Material 3 官方规范「听」界面重构：
- * 1. 严格使用 MaterialTheme.colorScheme 与 FocalTypography
- * 2. 唱片/精美书籍质感缩略图，统一 12dp 卡片圆角，1~2dp 微阴影
- * 3. 悬浮微胶囊播放器采用 M3 Surface 规范设计
+ * Material 3 规范「听」听书/播客板块优化：
+ * 1. 采用全板块统一左图右文卡片 (UnifiedMediaCard)，展示番茄/喜马/播客书籍与专辑缩略图；
+ * 2. 支持下拉刷新与上滑触底分页加载更多；
+ * 3. 悬浮微胶囊播放器采用 M3 Surface 拟态设计。
  */
 @Composable
 fun ListenScreen(
     prefStore: FocalPreferenceStore,
     onOpenDrawer: () -> Unit
 ) {
-    var audioList by remember { mutableStateOf(AudioRepository.getFallbackAudioList()) }
+    var audioList by remember { mutableStateOf<List<AudioItem>>(emptyList()) }
     var currentPlayingItem by remember { mutableStateOf<AudioItem?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+    var isLoadingMore by remember { mutableStateOf(false) }
+    var currentPage by remember { mutableIntStateOf(1) }
+    var hasMore by remember { mutableStateOf(true) }
+
+    val coroutineScope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+
+    fun refreshAudio() {
+        coroutineScope.launch {
+            isLoading = true
+            currentPage = 1
+            hasMore = true
+            val items = AudioRepository.fetchRealAudioList(page = 1)
+            audioList = items
+            isLoading = false
+        }
+    }
+
+    fun loadMoreAudio() {
+        if (isLoadingMore || !hasMore) return
+        coroutineScope.launch {
+            isLoadingMore = true
+            val nextPage = currentPage + 1
+            val more = AudioRepository.fetchRealAudioList(page = nextPage)
+            if (more.isEmpty()) {
+                hasMore = false
+            } else {
+                currentPage = nextPage
+                audioList = audioList + more
+            }
+            isLoadingMore = false
+        }
+    }
+
+    val shouldLoadMore = remember {
+        derivedStateOf {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            totalItems > 0 && lastVisible >= totalItems - 2
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore.value) {
+        if (shouldLoadMore.value && !isLoading && !isLoadingMore && hasMore) {
+            loadMoreAudio()
+        }
+    }
 
     LaunchedEffect(Unit) {
-        audioList = AudioRepository.fetchRealAudioList()
+        refreshAudio()
     }
 
     Box(
@@ -69,44 +118,147 @@ fun ListenScreen(
                     )
                 }
 
-                // 纯矢量图标
-                Icon(
-                    imageVector = Icons.Rounded.GraphicEq,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(FocalDimens.iconSizeStandard)
-                )
+                IconButton(onClick = { refreshAudio() }) {
+                    Icon(
+                        imageVector = Icons.Rounded.Refresh,
+                        contentDescription = "Refresh",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(FocalDimens.iconSizeStandard)
+                    )
+                }
             }
 
-            // 音频列表
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = FocalDimens.pageHorizontalPadding,
-                    end = FocalDimens.pageHorizontalPadding,
-                    top = FocalDimens.spaceSmall,
-                    bottom = 100.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)
-            ) {
-                items(audioList, key = { it.id }) { item ->
-                    M3AudioCard(
-                        item = item,
-                        isCurrentPlaying = currentPlayingItem?.id == item.id && isPlaying,
-                        onClick = {
-                            if (currentPlayingItem?.id == item.id) {
-                                isPlaying = !isPlaying
-                            } else {
-                                currentPlayingItem = item
-                                isPlaying = true
+            // 音频列表与分页
+            AnimatedContent(
+                targetState = isLoading && audioList.isEmpty(),
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label = "audioLoadingTransition"
+            ) { initialLoading ->
+                if (initialLoading) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = FocalDimens.pageHorizontalPadding),
+                        verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)
+                    ) {
+                        repeat(6) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(84.dp),
+                                shape = FocalDimens.shapeCard,
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                )
+                            ) {}
+                        }
+                    }
+                } else if (audioList.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(FocalDimens.spaceLarge),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Rounded.ErrorOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
+                            Text(
+                                text = "音频节目加载失败或网络受限",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
+                            FilledTonalButton(onClick = { refreshAudio() }) {
+                                Text("重新连接")
                             }
                         }
-                    )
+                    }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(
+                            start = FocalDimens.pageHorizontalPadding,
+                            end = FocalDimens.pageHorizontalPadding,
+                            top = FocalDimens.spaceSmall,
+                            bottom = 100.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)
+                    ) {
+                        itemsIndexed(audioList, key = { _, item -> item.id }) { _, item ->
+                            val isCurrent = currentPlayingItem?.id == item.id && isPlaying
+                            UnifiedMediaCard(
+                                title = item.title,
+                                sourceName = item.platformTag,
+                                timeAgo = item.duration,
+                                hotScoreDisplay = item.playCount,
+                                thumbnailUrl = item.thumbnailUrl,
+                                isVideo = false,
+                                isGallery = false,
+                                fallbackIcon = Icons.Rounded.Headphones,
+                                thumbWidth = 76.dp,
+                                thumbHeight = 76.dp,
+                                onClick = {
+                                    if (currentPlayingItem?.id == item.id) {
+                                        isPlaying = !isPlaying
+                                    } else {
+                                        currentPlayingItem = item
+                                        isPlaying = true
+                                    }
+                                }
+                            )
+                        }
+
+                        // 触底分页加载提示
+                        item {
+                            if (isLoadingMore) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = FocalDimens.spaceMedium),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+                                        Text(
+                                            text = "正在调取更多热门有声剧与播客...",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            } else if (!hasMore) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = FocalDimens.spaceMedium),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "— 已加载全部有声书与播客节目 —",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        // 底部常驻悬浮微胶囊播放器（Material 3 高级拟态悬浮卡片）
+        // 底部常驻悬浮微胶囊播放器
         AnimatedVisibility(
             visible = currentPlayingItem != null,
             modifier = Modifier
@@ -166,7 +318,6 @@ fun ListenScreen(
                         }
                     }
 
-                    // 纯图标标准控制
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { isPlaying = !isPlaying }) {
                             Icon(
@@ -177,97 +328,6 @@ fun ListenScreen(
                             )
                         }
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun M3AudioCard(
-    item: AudioItem,
-    isCurrentPlaying: Boolean,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = FocalDimens.shapeCard,
-        elevation = CardDefaults.cardElevation(defaultElevation = FocalDimens.elevationSubtle),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isCurrentPlaying) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-            } else {
-                MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
-            }
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(FocalDimens.spaceMedium),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 唱片/书籍质感缩略图封套
-            Surface(
-                modifier = Modifier
-                    .size(54.dp)
-                    .clip(FocalDimens.shapeButton),
-                color = if (isCurrentPlaying) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                tonalElevation = FocalDimens.elevationSubtle
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = if (isCurrentPlaying) Icons.Rounded.Equalizer else Icons.Rounded.MenuBook,
-                        contentDescription = null,
-                        tint = if (isCurrentPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(FocalDimens.iconSizeStandard)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.width(FocalDimens.spaceMedium))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (isCurrentPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        shape = FocalDimens.shapeTag,
-                        color = MaterialTheme.colorScheme.secondaryContainer
-                    ) {
-                        Text(
-                            text = item.platformTag,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
-
-                    Text(
-                        text = item.narratorOrHost,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
-
-                    Text(
-                        text = item.playCount,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
                 }
             }
         }

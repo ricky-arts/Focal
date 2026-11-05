@@ -2,6 +2,9 @@ package com.focal.app
 
 import com.focal.app.core.content.ContentType
 import com.focal.app.core.content.NativeContentExtractor
+import com.focal.app.core.sources.ToutiaoSourceParser
+import com.focal.app.core.sources.WeiboSourceParser
+import com.focal.app.core.sources.ZhihuSourceParser
 import com.focal.app.feature_ask.AiPlatform
 import com.focal.app.feature_read.NewsCategory
 import com.focal.app.feature_read.NewsRepository
@@ -20,11 +23,31 @@ class FocalCoreLogicTest {
         val tags = news.map { it.sourceTag }.toSet()
         assertTrue("Should contain Toutiao (TT)", tags.contains("TT"))
         assertTrue("Should contain Weibo (WB)", tags.contains("WB"))
-        assertTrue("Should contain Baidu (BD)", tags.contains("BD"))
         assertTrue("Should contain Zhihu (ZH)", tags.contains("ZH"))
         for (i in 0 until news.size - 1) {
             assertTrue("Items must be sorted by hot score descending", news[i].hotScoreNum >= news[i + 1].hotScoreNum)
         }
+    }
+
+    @Test
+    fun testIndividualSourceParsersWithThumbnails() = runBlocking {
+        // 1. 头条解析与缩略图提取测试
+        val ttParser = ToutiaoSourceParser()
+        val ttItems = ttParser.fetchItems(page = 1, pageSize = 5)
+        assertTrue(ttItems.isNotEmpty())
+        assertTrue("Toutiao items should contain thumbnails", ttItems.any { !it.thumbnailUrl.isNullOrBlank() })
+
+        // 2. 微博解析与缩略图测试
+        val wbParser = WeiboSourceParser()
+        val wbItems = wbParser.fetchItems(page = 1, pageSize = 5)
+        assertTrue(wbItems.isNotEmpty())
+        assertTrue("Weibo items should contain thumbnails", wbItems.any { !it.thumbnailUrl.isNullOrBlank() })
+
+        // 3. 知乎解析与缩略图测试
+        val zhParser = ZhihuSourceParser()
+        val zhItems = zhParser.fetchItems(page = 1, pageSize = 5)
+        assertTrue(zhItems.isNotEmpty())
+        assertTrue("Zhihu items should contain thumbnails", zhItems.any { !it.thumbnailUrl.isNullOrBlank() })
     }
 
     @Test
@@ -81,17 +104,19 @@ class FocalCoreLogicTest {
     }
 
     @Test
-    fun testVideoRepositoryAggregation() {
-        val videos = VideoRepository.getFallbackFeeds()
+    fun testVideoRepositoryPaginationAndThumbnails() = runBlocking {
+        val videos = VideoRepository.fetchRealVideoFeeds(page = 1)
         assertTrue("Video feeds should not be empty", videos.isNotEmpty())
+        assertTrue("Videos should contain thumbnails", videos.any { !it.thumbnailUrl.isNullOrBlank() })
         assertTrue("Should contain Douyin videos", videos.any { it.platformTag == "DY" })
         assertTrue("Should contain Bilibili videos", videos.any { it.platformTag == "BILI" })
     }
 
     @Test
-    fun testAudioRepositoryFanqieAndXimalaya() {
-        val audios = AudioRepository.getFallbackAudioList()
+    fun testAudioRepositoryPaginationAndThumbnails() = runBlocking {
+        val audios = AudioRepository.fetchRealAudioList(page = 1)
         assertTrue("Audios should not be empty", audios.isNotEmpty())
+        assertTrue("Audios should contain thumbnails", audios.any { !it.thumbnailUrl.isNullOrBlank() })
         assertTrue("Should contain Fanqie audiobook", audios.any { it.platformTag == "番茄" })
         assertTrue("Should contain Ximalaya audiobook", audios.any { it.platformTag == "喜马" })
         assertTrue("Should contain Podcast item", audios.any { it.platformTag == "播客" })

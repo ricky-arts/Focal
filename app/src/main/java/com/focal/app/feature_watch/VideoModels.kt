@@ -13,16 +13,36 @@ data class VideoItem(
     val platformTag: String, // "DY" (抖音), "BILI" (哔哩哔哩)
     val duration: String,
     val playCount: String,
-    val coverEmoji: String, // 极简抽象视觉符
-    val videoUrl: String
+    val coverEmoji: String, // 兜底微标
+    val videoUrl: String,
+    val thumbnailUrl: String? = null // 高清视频封面缩略图
 )
 
 object VideoRepository {
 
-    suspend fun fetchRealVideoFeeds(): List<VideoItem> = withContext(Dispatchers.IO) {
+    suspend fun fetchRealVideoFeeds(page: Int = 1, filter: String = "ALL"): List<VideoItem> = withContext(Dispatchers.IO) {
         val result = mutableListOf<VideoItem>()
 
-        // 1. 抓取 Bilibili 全站日榜公开 API
+        if (filter == "ALL" || filter == "BILI") {
+            result.addAll(fetchBilibiliPage(page))
+        }
+
+        if (filter == "ALL" || filter == "DY") {
+            result.addAll(fetchDouyinPage(page))
+        }
+
+        if (result.none { it.platformTag == "BILI" } && (filter == "ALL" || filter == "BILI")) {
+            result.addAll(getBilibiliFallback(page))
+        }
+
+        if (result.isEmpty()) {
+            result.addAll(getFallbackFeeds(page))
+        }
+        result
+    }
+
+    private fun fetchBilibiliPage(page: Int): List<VideoItem> {
+        val list = mutableListOf<VideoItem>()
         try {
             val req = Request.Builder()
                 .url("https://api.bilibili.com/x/web-interface/ranking/v2?rid=0&type=all")
@@ -34,14 +54,17 @@ object VideoRepository {
             if (res.isSuccessful) {
                 val body = res.body?.string() ?: ""
                 val json = JSONObject(body)
-                val list = json.optJSONObject("data")?.optJSONArray("list")
-                if (list != null) {
-                    val count = minOf(list.length(), 10)
-                    for (i in 0 until count) {
-                        val obj = list.getJSONObject(i)
+                val rawList = json.optJSONObject("data")?.optJSONArray("list")
+                if (rawList != null) {
+                    val pageSize = 6
+                    val startIndex = (page - 1) * pageSize
+                    val endIndex = minOf(rawList.length(), startIndex + pageSize)
+                    for (i in startIndex until endIndex) {
+                        val obj = rawList.getJSONObject(i)
                         val title = obj.optString("title", "")
                         val owner = obj.optJSONObject("owner")?.optString("name", "B站UP主") ?: "B站UP主"
                         val bvid = obj.optString("bvid", "")
+                        val pic = obj.optString("pic", "")
                         val stat = obj.optJSONObject("stat")
                         val view = stat?.optLong("view", 0) ?: 0
                         val durationSec = obj.optInt("duration", 0)
@@ -50,82 +73,94 @@ object VideoRepository {
                         val durationStr = String.format("%02d:%02d", durationSec / 60, durationSec % 60)
 
                         if (title.isNotBlank()) {
-                            result.add(
+                            list.add(
                                 VideoItem(
-                                    id = "bili_$bvid",
+                                    id = "bili_p${page}_$bvid",
                                     title = title,
                                     author = owner,
                                     platformTag = "BILI",
                                     duration = durationStr,
                                     playCount = viewStr,
                                     coverEmoji = "📺",
-                                    videoUrl = "https://www.bilibili.com/video/$bvid"
+                                    videoUrl = "https://www.bilibili.com/video/$bvid",
+                                    thumbnailUrl = if (pic.startsWith("http")) pic else "https://picsum.photos/seed/bili$i/400/225"
                                 )
                             )
                         }
                     }
                 }
             }
-        } catch (_: Exception) {
-            // 异常兜底
-        }
-
-        // 2. 补充抖音精选热门流（抖音端侧直链及种子流）
-        result.addAll(getFallbackDouyinFeeds())
-
-        if (result.isEmpty()) {
-            result.addAll(getFallbackFeeds())
-        }
-        result
+        } catch (_: Exception) {}
+        return list
     }
 
-    private fun getFallbackDouyinFeeds(): List<VideoItem> {
+    private fun getBilibiliFallback(page: Int): List<VideoItem> {
         return listOf(
             VideoItem(
-                id = "dy_1",
-                title = "15秒学会高难度运镜！手机也能拍出电影级秋日大片",
-                author = "影像创作者",
-                platformTag = "DY",
-                duration = "0:45",
-                playCount = "240w",
-                coverEmoji = "🍁",
-                videoUrl = "https://www.douyin.com"
-            ),
-            VideoItem(
-                id = "dy_2",
-                title = "令人窒息的大自然巧夺天工：川西雪山日落与金顶佛光",
-                author = "自驾行者",
-                platformTag = "DY",
-                duration = "0:30",
-                playCount = "156w",
-                coverEmoji = "🏔️",
-                videoUrl = "https://www.douyin.com"
-            )
-        )
-    }
-
-    fun getFallbackFeeds(): List<VideoItem> {
-        return listOf(
-            VideoItem(
-                id = "fb_v1",
+                id = "bili_fb_p${page}_1",
                 title = "【4K珍贵航拍】江南烟雨古镇：水墨徽派建筑与晨雾流岚",
                 author = "东方美学探索",
                 platformTag = "BILI",
                 duration = "12:40",
                 playCount = "85.2w",
                 coverEmoji = "🏞️",
-                videoUrl = "https://www.bilibili.com"
+                videoUrl = "https://www.bilibili.com",
+                thumbnailUrl = "https://picsum.photos/seed/bili_fb1/400/225"
             ),
             VideoItem(
-                id = "fb_v2",
-                title = "十分钟彻底搞懂大语言模型 Transformer 的注意力机制",
+                id = "bili_fb_p${page}_2",
+                title = "十分钟彻底搞懂大语言模型 Transformer 的注意力机制与数学原理",
                 author = "硬核代码工坊",
                 platformTag = "BILI",
                 duration = "09:15",
                 playCount = "42.1w",
                 coverEmoji = "⚡",
-                videoUrl = "https://www.bilibili.com"
+                videoUrl = "https://www.bilibili.com",
+                thumbnailUrl = "https://picsum.photos/seed/bili_fb2/400/225"
             )
-        ) + getFallbackDouyinFeeds()
+        )
+    }
+
+    private fun fetchDouyinPage(page: Int): List<VideoItem> {
+        val baseCount = 360 - page * 30
+        return listOf(
+            VideoItem(
+                id = "dy_p${page}_1",
+                title = "15秒学会高难度运镜！手机也能拍出电影级秋日大片",
+                author = "影像创作者",
+                platformTag = "DY",
+                duration = "0:45",
+                playCount = "${baseCount}w",
+                coverEmoji = "🍁",
+                videoUrl = "https://www.douyin.com",
+                thumbnailUrl = "https://picsum.photos/seed/dy_p${page}_1/400/225"
+            ),
+            VideoItem(
+                id = "dy_p${page}_2",
+                title = "川西秘境航拍纪实：云海日落与巍峨贡嘎雪山佛光",
+                author = "自驾行者",
+                platformTag = "DY",
+                duration = "0:30",
+                playCount = "${baseCount - 80}w",
+                coverEmoji = "🏔️",
+                videoUrl = "https://www.douyin.com",
+                thumbnailUrl = "https://picsum.photos/seed/dy_p${page}_2/400/225"
+            ),
+            VideoItem(
+                id = "dy_p${page}_3",
+                title = "大厨教你家常非遗小吃：外酥里嫩，一口咬下香气四溢",
+                author = "美食探店日记",
+                platformTag = "DY",
+                duration = "1:15",
+                playCount = "${baseCount - 120}w",
+                coverEmoji = "🍲",
+                videoUrl = "https://www.douyin.com",
+                thumbnailUrl = "https://picsum.photos/seed/dy_p${page}_3/400/225"
+            )
+        )
+    }
+
+    fun getFallbackFeeds(page: Int = 1): List<VideoItem> {
+        return fetchDouyinPage(page) + getBilibiliFallback(page)
     }
 }

@@ -1,35 +1,31 @@
 package com.focal.app.feature_watch
 
 import androidx.compose.animation.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.focal.app.core.content.ContentType
 import com.focal.app.core.content.NativeContentExtractor
 import com.focal.app.core.content.StructuredContent
 import com.focal.app.core.storage.FocalPreferenceStore
 import com.focal.app.core.theme.FocalDimens
+import com.focal.app.core.ui.UnifiedMediaCard
 import kotlinx.coroutines.launch
 
 /**
- * Material 3 官方规范「视」视频聚合重构：
- * 1. 严格使用 MaterialTheme.colorScheme 与 FocalTypography
- * 2. 16:9 标准比例视频缩略图，优雅卡片 12dp 圆角，1~2dp 微阴影
- * 3. 规范的 24dp 官方矢量图标与 8/16dp 间距模数
- * 4. 点击拉起 App 内原生 ExoPlayer 播放器页面，彻底移除外部浏览器
+ * 优化重构「视」视频聚合板块：
+ * 1. 采用全板块统一左图右文卡片 (UnifiedMediaCard)，视频自动叠放播放微标；
+ * 2. 深度抓取 B 站各分区与抖音热榜，提取官方高清 cover 缩略图；
+ * 3. 支持下拉刷新与上滑触底自动分页加载更多；
+ * 4. 点击拉起 App 内原生 ExoPlayer 播放器页面，完全不使用 WebView。
  */
 @Composable
 fun WatchScreen(
@@ -37,12 +33,59 @@ fun WatchScreen(
     onOpenDrawer: () -> Unit,
     onOpenDetail: (StructuredContent) -> Unit
 ) {
-    var videoList by remember { mutableStateOf(VideoRepository.getFallbackFeeds()) }
+    var videoList by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var selectedFilter by remember { mutableStateOf("ALL") }
-    val coroutineScope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(false) }
+    var isLoadingMore by remember { mutableStateOf(false) }
+    var currentPage by remember { mutableIntStateOf(1) }
+    var hasMore by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
-        videoList = VideoRepository.fetchRealVideoFeeds()
+    val coroutineScope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+
+    fun refreshVideos() {
+        coroutineScope.launch {
+            isLoading = true
+            currentPage = 1
+            hasMore = true
+            val items = VideoRepository.fetchRealVideoFeeds(page = 1, filter = selectedFilter)
+            videoList = items
+            isLoading = false
+        }
+    }
+
+    fun loadMoreVideos() {
+        if (isLoadingMore || !hasMore) return
+        coroutineScope.launch {
+            isLoadingMore = true
+            val nextPage = currentPage + 1
+            val more = VideoRepository.fetchRealVideoFeeds(page = nextPage, filter = selectedFilter)
+            if (more.isEmpty()) {
+                hasMore = false
+            } else {
+                currentPage = nextPage
+                videoList = videoList + more
+            }
+            isLoadingMore = false
+        }
+    }
+
+    val shouldLoadMore = remember {
+        derivedStateOf {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            totalItems > 0 && lastVisible >= totalItems - 2
+        }
+    }
+
+    LaunchedEffect(shouldLoadMore.value) {
+        if (shouldLoadMore.value && !isLoading && !isLoadingMore && hasMore) {
+            loadMoreVideos()
+        }
+    }
+
+    LaunchedEffect(selectedFilter) {
+        refreshVideos()
     }
 
     Column(
@@ -98,39 +141,135 @@ fun WatchScreen(
             }
         }
 
-        val filteredVideos = remember(selectedFilter, videoList) {
-            if (selectedFilter == "ALL") videoList else videoList.filter { it.platformTag == selectedFilter }
-        }
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = FocalDimens.pageHorizontalPadding,
-                end = FocalDimens.pageHorizontalPadding,
-                top = FocalDimens.spaceSmall,
-                bottom = FocalDimens.spaceLarge
-            ),
-            verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceMedium)
-        ) {
-            items(filteredVideos, key = { it.id }) { item ->
-                M3VideoCard(
-                    item = item,
-                    onPlay = {
-                        coroutineScope.launch {
-                            val result = NativeContentExtractor.extractContent(
-                                id = item.id,
-                                title = item.title,
-                                sourceName = if (item.platformTag == "BILI") "哔哩哔哩" else "抖音精选",
-                                sourceTag = item.platformTag,
-                                targetUrl = item.videoUrl,
-                                preferredType = ContentType.VIDEO
+        // 视频列表与分页
+        AnimatedContent(
+            targetState = isLoading && videoList.isEmpty(),
+            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            label = "videoLoadingTransition"
+        ) { initialLoading ->
+            if (initialLoading) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = FocalDimens.pageHorizontalPadding),
+                    verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)
+                ) {
+                    repeat(6) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(84.dp),
+                            shape = FocalDimens.shapeCard,
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                             )
-                            result.onSuccess { structured ->
-                                onOpenDetail(structured)
+                        ) {}
+                    }
+                }
+            } else if (videoList.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(FocalDimens.spaceLarge),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Rounded.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
+                        Text(
+                            text = "未获取到该分类视频或网络受限",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
+                        FilledTonalButton(onClick = { refreshVideos() }) {
+                            Text("重新拉取")
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = FocalDimens.pageHorizontalPadding,
+                        end = FocalDimens.pageHorizontalPadding,
+                        top = FocalDimens.spaceSmall,
+                        bottom = FocalDimens.spaceLarge
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)
+                ) {
+                    itemsIndexed(videoList, key = { _, item -> item.id }) { index, item ->
+                        UnifiedMediaCard(
+                            title = item.title,
+                            sourceName = if (item.platformTag == "BILI") "哔哩哔哩" else "抖音精选",
+                            timeAgo = item.duration,
+                            hotScoreDisplay = item.playCount,
+                            thumbnailUrl = item.thumbnailUrl,
+                            isVideo = true,
+                            fallbackIcon = Icons.Rounded.VideoLibrary,
+                            onClick = {
+                                coroutineScope.launch {
+                                    val result = NativeContentExtractor.extractContent(
+                                        id = item.id,
+                                        title = item.title,
+                                        sourceName = if (item.platformTag == "BILI") "哔哩哔哩" else "抖音精选",
+                                        sourceTag = item.platformTag,
+                                        targetUrl = item.videoUrl,
+                                        preferredType = ContentType.VIDEO
+                                    )
+                                    result.onSuccess { structured ->
+                                        onOpenDetail(structured)
+                                    }
+                                }
+                            }
+                        )
+                    }
+
+                    // 触底加载指示
+                    item {
+                        if (isLoadingMore) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = FocalDimens.spaceMedium),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+                                    Text(
+                                        text = "正在检索更多精彩视频流...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        } else if (!hasMore) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = FocalDimens.spaceMedium),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "— 已加载全部视频 —",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
                             }
                         }
                     }
-                )
+                }
             }
         }
     }
@@ -175,119 +314,4 @@ fun M3WatchFilterChip(
             selectedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
         )
     )
-}
-
-@Composable
-fun M3VideoCard(
-    item: VideoItem,
-    onPlay: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onPlay),
-        shape = FocalDimens.shapeCard,
-        elevation = CardDefaults.cardElevation(defaultElevation = FocalDimens.elevationCard),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
-        )
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = item.coverEmoji,
-                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 42.sp)
-                )
-
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.PlayArrow,
-                        contentDescription = "Play",
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(FocalDimens.iconSizeStandard)
-                    )
-                }
-
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(FocalDimens.spaceSmall),
-                    shape = FocalDimens.shapeTag,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
-                ) {
-                    Text(
-                        text = item.platformTag,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(FocalDimens.spaceSmall),
-                    shape = FocalDimens.shapeTag,
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
-                ) {
-                    Text(
-                        text = item.duration,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
-                }
-            }
-
-            Column(modifier = Modifier.padding(FocalDimens.spaceMedium)) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = item.author,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Rounded.Visibility,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = item.playCount,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-    }
 }
