@@ -19,7 +19,8 @@ data class NewsItem(
     val timeAgo: String,
     val hotScoreNum: Long, // 归一化热度数值（便于排序）
     val hotScoreDisplay: String, // 显示用（如 "1200w"）
-    val url: String
+    val url: String,
+    val thumbnailUrl: String? = null // 缩略图支持
 )
 
 /**

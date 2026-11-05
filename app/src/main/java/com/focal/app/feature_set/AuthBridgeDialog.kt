@@ -1,9 +1,7 @@
 package com.focal.app.feature_set
 
 import android.annotation.SuppressLint
-import android.graphics.Bitmap
 import android.webkit.CookieManager
-import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
@@ -18,16 +16,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.focal.app.core.storage.FocalPreferenceStore
-import com.focal.app.core.theme.*
+import com.focal.app.core.theme.FocalDimens
 
 /**
- * 身份对接浏览器窗口 (Auth Bridge Dialog)
- * 在隔离沙箱中打开目标 AI 平台的 Web 登录页，自动拦截身份 Cookie 并通过 FocalPreferenceStore 持久化。
+ * 身份对接浏览器窗口 (Auth Bridge Dialog) M3 重构
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -57,31 +53,32 @@ fun AuthBridgeDialog(
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
-            shape = MaterialTheme.shapes.extraLarge,
-            color = InkSurface
+                .padding(FocalDimens.spaceMedium),
+            shape = FocalDimens.shapeCard,
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = FocalDimens.elevationFloat
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // 顶栏：平台信息与一键捕获/完成
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = FocalDimens.spaceMedium, vertical = FocalDimens.spaceSmall),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(10.dp)
+                                .size(8.dp)
                                 .clip(CircleShape)
-                                .background(if (hasValidSession) BambooGreen else MistGrey)
+                                .background(if (hasValidSession) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
                         Text(
                             text = "身份对接 · $platformKey",
-                            color = MoonWhite,
-                            fontSize = 14.sp
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
@@ -93,22 +90,24 @@ fun AuthBridgeDialog(
                             }) {
                                 Icon(
                                     imageVector = Icons.Rounded.CheckCircle,
-                                    contentDescription = null,
-                                    tint = BambooGreen
+                                    contentDescription = "Confirm",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(FocalDimens.iconSizeStandard)
                                 )
                             }
                         }
                         IconButton(onClick = onDismiss) {
                             Icon(
                                 imageVector = Icons.Rounded.Close,
-                                contentDescription = null,
-                                tint = MistGrey
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(FocalDimens.iconSizeStandard)
                             )
                         }
                     }
                 }
 
-                Divider(color = InkBorder)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
                 // 核心内置 Web 鉴权沙箱
                 AndroidView(
@@ -124,7 +123,6 @@ fun AuthBridgeDialog(
                                     super.onPageFinished(view, url)
                                     val cookieManager = CookieManager.getInstance()
                                     val cookies = cookieManager.getCookie(url) ?: ""
-                                    // 检查关键身份凭据（如 token, session, uid 等）
                                     if (cookies.contains("session") ||
                                         cookies.contains("token") ||
                                         cookies.contains("uid") ||

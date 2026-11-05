@@ -1,13 +1,12 @@
 package com.focal.app.feature_listen
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -15,14 +14,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.focal.app.core.storage.FocalPreferenceStore
-import com.focal.app.core.theme.*
+import com.focal.app.core.theme.FocalDimens
 
 /**
- * 「听」听书与播客聚合流：
- * 纯图标悬浮胶囊播放器、背景播放支持、极简列表
+ * Material 3 官方规范「听」界面重构：
+ * 1. 严格使用 MaterialTheme.colorScheme 与 FocalTypography
+ * 2. 唱片/精美书籍质感缩略图，统一 12dp 卡片圆角，1~2dp 微阴影
+ * 3. 悬浮微胶囊播放器采用 M3 Surface 规范设计
  */
 @Composable
 fun ListenScreen(
@@ -40,53 +41,56 @@ fun ListenScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(InkBlack)
             .statusBarsPadding()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // 顶栏：纯图标操作
+            // M3 顶栏
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = FocalDimens.pageHorizontalPadding, vertical = FocalDimens.spaceSmall),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onOpenDrawer) {
-                    Icon(
-                        imageVector = Icons.Rounded.Menu,
-                        contentDescription = null,
-                        tint = MoonWhite
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onOpenDrawer) {
+                        Icon(
+                            imageVector = Icons.Rounded.Menu,
+                            contentDescription = "Menu",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(FocalDimens.iconSizeStandard)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+                    Text(
+                        text = "听",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
-                // 纯图标分类切换：全部 / 听书 / 播客
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(BambooGreenSoft),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.GraphicEq, // 动态声波
-                            contentDescription = null,
-                            tint = BambooGreen,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
+                // 纯矢量图标
+                Icon(
+                    imageVector = Icons.Rounded.GraphicEq,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(FocalDimens.iconSizeStandard)
+                )
             }
 
             // 音频列表
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 100.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                contentPadding = PaddingValues(
+                    start = FocalDimens.pageHorizontalPadding,
+                    end = FocalDimens.pageHorizontalPadding,
+                    top = FocalDimens.spaceSmall,
+                    bottom = 100.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)
             ) {
                 items(audioList, key = { it.id }) { item ->
-                    AudioCard(
+                    M3AudioCard(
                         item = item,
                         isCurrentPlaying = currentPlayingItem?.id == item.id && isPlaying,
                         onClick = {
@@ -102,21 +106,26 @@ fun ListenScreen(
             }
         }
 
-        // 底部常驻悬浮微胶囊播放器（纯图标操作：播放/暂停/快进）
-        if (currentPlayingItem != null) {
+        // 底部常驻悬浮微胶囊播放器（Material 3 高级拟态悬浮卡片）
+        AnimatedVisibility(
+            visible = currentPlayingItem != null,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = FocalDimens.pageHorizontalPadding, vertical = FocalDimens.spaceMedium),
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
             Surface(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp)),
-                color = InkSurfaceVariant,
-                tonalElevation = 6.dp
+                modifier = Modifier.fillMaxWidth(),
+                shape = FocalDimens.shapePill,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = FocalDimens.elevationFloat,
+                shadowElevation = FocalDimens.elevationCard
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = FocalDimens.spaceMedium, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -124,52 +133,47 @@ fun ListenScreen(
                         modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(BambooGreenSoft),
-                            contentAlignment = Alignment.Center
+                        Surface(
+                            modifier = Modifier.size(40.dp),
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer
                         ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Headphones,
-                                contentDescription = null,
-                                tint = BambooGreen,
-                                modifier = Modifier.size(20.dp)
-                            )
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Headphones,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Spacer(modifier = Modifier.width(FocalDimens.spaceMedium))
+
                         Column {
                             Text(
-                                text = currentPlayingItem!!.title,
-                                color = MoonWhite,
-                                fontSize = 13.sp,
-                                maxLines = 1
+                                text = currentPlayingItem?.title ?: "",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = currentPlayingItem!!.narratorOrHost,
-                                color = MistGrey,
-                                fontSize = 11.sp
+                                text = currentPlayingItem?.narratorOrHost ?: "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
                         }
                     }
 
-                    // 纯图标控制器
+                    // 纯图标标准控制
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { isPlaying = !isPlaying }) {
                             Icon(
                                 imageVector = if (isPlaying) Icons.Rounded.PauseCircle else Icons.Rounded.PlayCircle,
-                                contentDescription = null,
-                                tint = BambooGreen,
-                                modifier = Modifier.size(34.dp)
-                            )
-                        }
-                        IconButton(onClick = { /* 后跳15秒 */ }) {
-                            Icon(
-                                imageVector = Icons.Rounded.Forward10,
-                                contentDescription = null,
-                                tint = MistGrey,
-                                modifier = Modifier.size(22.dp)
+                                contentDescription = "Play/Pause",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(32.dp)
                             )
                         }
                     }
@@ -180,7 +184,7 @@ fun ListenScreen(
 }
 
 @Composable
-fun AudioCard(
+fun M3AudioCard(
     item: AudioItem,
     isCurrentPlaying: Boolean,
     onClick: () -> Unit
@@ -188,66 +192,81 @@ fun AudioCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick),
+        shape = FocalDimens.shapeCard,
+        elevation = CardDefaults.cardElevation(defaultElevation = FocalDimens.elevationSubtle),
         colors = CardDefaults.cardColors(
-            containerColor = if (isCurrentPlaying) InkSurfaceVariant else InkSurface
+            containerColor = if (isCurrentPlaying) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            } else {
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+            }
         )
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(FocalDimens.spaceMedium),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
+            // 唱片/书籍质感缩略图封套
+            Surface(
                 modifier = Modifier
-                    .size(46.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (isCurrentPlaying) BambooGreenSoft else InkSurfaceVariant),
-                contentAlignment = Alignment.Center
+                    .size(54.dp)
+                    .clip(FocalDimens.shapeButton),
+                color = if (isCurrentPlaying) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = FocalDimens.elevationSubtle
             ) {
-                Icon(
-                    imageVector = if (isCurrentPlaying) Icons.Rounded.Equalizer else Icons.Rounded.PlayArrow,
-                    contentDescription = null,
-                    tint = if (isCurrentPlaying) BambooGreen else MistGrey,
-                    modifier = Modifier.size(24.dp)
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isCurrentPlaying) Icons.Rounded.Equalizer else Icons.Rounded.MenuBook,
+                        contentDescription = null,
+                        tint = if (isCurrentPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(FocalDimens.iconSizeStandard)
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(FocalDimens.spaceMedium))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.title,
-                    color = if (isCurrentPlaying) BambooGreen else MoonWhite,
-                    fontSize = 14.sp
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (isCurrentPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+
                 Spacer(modifier = Modifier.height(4.dp))
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(BambooGreenSoft)
-                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                    Surface(
+                        shape = FocalDimens.shapeTag,
+                        color = MaterialTheme.colorScheme.secondaryContainer
                     ) {
                         Text(
                             text = item.platformTag,
-                            color = BambooGreen,
-                            fontSize = 9.sp
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+
                     Text(
                         text = item.narratorOrHost,
-                        color = MistGrey,
-                        fontSize = 11.sp
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+
                     Text(
                         text = item.playCount,
-                        color = MistGrey,
-                        fontSize = 11.sp
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                 }
             }

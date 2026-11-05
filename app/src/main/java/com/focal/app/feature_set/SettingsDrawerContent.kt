@@ -5,8 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Article
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,17 +16,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.focal.app.core.storage.FocalPreferenceStore
-import com.focal.app.core.theme.*
+import com.focal.app.core.theme.FocalDimens
 import com.focal.app.feature_read.NewsCategory
 
 /**
- * 侧边独立展开的设置面板：
- * 纯图标与极简意象，包含：
- * 1. 资讯栏目偏好定制（综合、娱乐、体育、科技、财经、国际）
- * 2. 全网平台源开关（今日头条、微博、百度、知乎、抖音、B站、番茄畅听、喜马拉雅等）
- * 3. 身份对接工具与状态管理（豆包、Kimi、千问、元宝）
+ * Material 3 规范侧边独立设置抽屉重构：
+ * 1. 严格使用 MaterialTheme.colorScheme 与 FocalTypography
+ * 2. 增加视觉画境配置：壁纸选择、透明度滑块 (0.0~1.0)、对比度滑块 (0.5~1.5)
+ * 3. 规范圆角 (12dp 卡片, 8dp 按钮, 4dp 标签) 与标准 24dp 矢量图标
  */
 @Composable
 fun SettingsDrawerContent(
@@ -33,192 +32,241 @@ fun SettingsDrawerContent(
     onOpenAuthBridge: (platformKey: String) -> Unit,
     onCloseDrawer: () -> Unit
 ) {
+    var wallpaperKey by remember { mutableStateOf(prefStore.getWallpaperKey()) }
+    var opacity by remember { mutableFloatStateOf(prefStore.getWallpaperOpacity()) }
+    var contrast by remember { mutableFloatStateOf(prefStore.getWallpaperContrast()) }
+
     Surface(
         modifier = Modifier
             .fillMaxHeight()
-            .width(330.dp),
-        color = InkSurface,
-        tonalElevation = 8.dp
+            .width(340.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = FocalDimens.elevationFloat
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(20.dp)
+                .padding(FocalDimens.spaceMedium)
         ) {
-            // 顶栏：关闭图标与精简标识
+            // 顶栏：关闭与标题
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(BambooGreenSoft),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Tune,
-                            contentDescription = null,
-                            tint = BambooGreen,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Icon(
+                        imageVector = Icons.Rounded.Tune,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(FocalDimens.iconSizeStandard)
+                    )
+                    Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
                     Text(
-                        text = "设",
-                        color = MoonWhite,
-                        fontSize = 18.sp
+                        text = "设置与画境",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
                 IconButton(onClick = onCloseDrawer) {
                     Icon(
-                        imageVector = Icons.Rounded.ChevronLeft,
-                        contentDescription = null,
-                        tint = MistGrey
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "Close",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(FocalDimens.iconSizeStandard)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceMedium)
             ) {
-                // 1. 用户自定义关心的资讯栏目
+                // 1. 背景视觉工坊 (Wallpaper & Contrast)
                 item {
                     Text(
-                        text = "资讯感兴趣栏目定制",
-                        color = MistGrey,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        text = "背景壁纸与滤镜微调",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
+                    Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
 
-                    NewsCategory.values().forEach { cat ->
-                        CategoryToggleItem(
-                            cat = cat,
-                            prefStore = prefStore
+                    Card(
+                        shape = FocalDimens.shapeCard,
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(FocalDimens.spaceMedium)) {
+                            // 壁纸主题预设选择
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)
+                            ) {
+                                listOf(
+                                    "default" to "默认",
+                                    "bamboo" to "竹影",
+                                    "watertown" to "水乡",
+                                    "sunset" to "落日",
+                                    "none" to "纯粹"
+                                ).forEach { (key, label) ->
+                                    val isSelected = wallpaperKey == key
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = {
+                                            wallpaperKey = key
+                                            prefStore.setWallpaperKey(key)
+                                        },
+                                        shape = FocalDimens.shapeTag,
+                                        label = { Text(label, style = MaterialTheme.typography.bodySmall) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
+
+                            // 透明度滑块 (0.1 ~ 1.0)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "背景透光度",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "${(opacity * 100).toInt()}%",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Slider(
+                                value = opacity,
+                                onValueChange = {
+                                    opacity = it
+                                    prefStore.setWallpaperOpacity(it)
+                                },
+                                valueRange = 0.1f..1.0f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary
+                                )
+                            )
+
+                            // 对比度滑块 (0.5 ~ 1.5)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "对比度调校",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = String.format("%.1fx", contrast),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Slider(
+                                value = contrast,
+                                onValueChange = {
+                                    contrast = it
+                                    prefStore.setWallpaperContrast(it)
+                                },
+                                valueRange = 0.5f..1.5f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                        }
                     }
                 }
 
-                // 2. 全网聚合内容源开关
+                // 2. 资讯感兴趣栏目定制
                 item {
-                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "全网聚合源启用",
-                        color = MistGrey,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        text = "资讯栏目定制",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
+                    Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
 
-                    SourceToggleItem(
-                        icon = Icons.Rounded.Article,
-                        name = "今日头条 (Toutiao)",
-                        key = "toutiao",
-                        prefStore = prefStore
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    SourceToggleItem(
-                        icon = Icons.Rounded.Whatshot,
-                        name = "微博热搜 (Weibo)",
-                        key = "weibo",
-                        prefStore = prefStore
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    SourceToggleItem(
-                        icon = Icons.Rounded.Search,
-                        name = "百度热搜 (Baidu)",
-                        key = "baidu",
-                        prefStore = prefStore
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    SourceToggleItem(
-                        icon = Icons.Rounded.Lightbulb,
-                        name = "知乎热榜 (Zhihu)",
-                        key = "zhihu",
-                        prefStore = prefStore
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    SourceToggleItem(
-                        icon = Icons.Rounded.Public,
-                        name = "国际热点 (Reddit/HN)",
-                        key = "reddit",
-                        prefStore = prefStore
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    SourceToggleItem(
-                        icon = Icons.Rounded.SmartDisplay,
-                        name = "哔哩哔哩 (Bilibili)",
-                        key = "video_bilibili",
-                        prefStore = prefStore
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    SourceToggleItem(
-                        icon = Icons.Rounded.MusicVideo,
-                        name = "抖音精选 (Douyin)",
-                        key = "video_douyin",
-                        prefStore = prefStore
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    SourceToggleItem(
-                        icon = Icons.Rounded.MenuBook,
-                        name = "番茄畅听 / 有声书",
-                        key = "audio_fanqie",
-                        prefStore = prefStore
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    SourceToggleItem(
-                        icon = Icons.Rounded.Podcasts,
-                        name = "喜马拉雅与开放播客",
-                        key = "audio_podcast",
-                        prefStore = prefStore
-                    )
+                    NewsCategory.values().forEach { cat ->
+                        M3CategoryToggleItem(
+                            cat = cat,
+                            prefStore = prefStore
+                        )
+                        Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
+                    }
                 }
 
-                // 3. 身份对接工具 (针对强校验的 AI 平台)
+                // 3. 全网聚合内容源开关
                 item {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "全网聚合源启用",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
+
+                    listOf(
+                        Triple(Icons.AutoMirrored.Rounded.Article, "今日头条 (Toutiao)", "toutiao"),
+                        Triple(Icons.Rounded.Whatshot, "微博热搜 (Weibo)", "weibo"),
+                        Triple(Icons.Rounded.Search, "百度热搜 (Baidu)", "baidu"),
+                        Triple(Icons.Rounded.Lightbulb, "知乎热榜 (Zhihu)", "zhihu"),
+                        Triple(Icons.Rounded.Public, "国际资讯 (Reddit/HN)", "reddit"),
+                        Triple(Icons.Rounded.SmartDisplay, "哔哩哔哩 (Bilibili)", "video_bilibili"),
+                        Triple(Icons.Rounded.MusicVideo, "抖音精选 (Douyin)", "video_douyin"),
+                        Triple(Icons.AutoMirrored.Rounded.MenuBook, "番茄畅听 / 有声书", "audio_fanqie"),
+                        Triple(Icons.Rounded.Podcasts, "喜马拉雅与开放播客", "audio_podcast")
+                    ).forEach { (icon, name, key) ->
+                        M3SourceToggleItem(
+                            icon = icon,
+                            name = name,
+                            key = key,
+                            prefStore = prefStore
+                        )
+                        Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
+                    }
+                }
+
+                // 4. AI 身份对接持久化
+                item {
                     Text(
                         text = "AI 身份对接持久化",
-                        color = MistGrey,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
                     )
+                    Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
 
-                    AuthPlatformItem(
-                        name = "豆包 (Doubao)",
-                        platformKey = "doubao",
-                        prefStore = prefStore,
-                        onConnect = { onOpenAuthBridge("doubao") }
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    AuthPlatformItem(
-                        name = "Kimi 智能助手",
-                        platformKey = "kimi",
-                        prefStore = prefStore,
-                        onConnect = { onOpenAuthBridge("kimi") }
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    AuthPlatformItem(
-                        name = "通义千问 (Qwen)",
-                        platformKey = "qwen",
-                        prefStore = prefStore,
-                        onConnect = { onOpenAuthBridge("qwen") }
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    AuthPlatformItem(
-                        name = "腾讯元宝 (Yuanbao)",
-                        platformKey = "yuanbao",
-                        prefStore = prefStore,
-                        onConnect = { onOpenAuthBridge("yuanbao") }
-                    )
+                    listOf(
+                        "豆包 (Doubao)" to "doubao",
+                        "Kimi 智能助手" to "kimi",
+                        "通义千问 (Qwen)" to "qwen",
+                        "腾讯元宝 (Yuanbao)" to "yuanbao"
+                    ).forEach { (name, key) ->
+                        M3AuthPlatformItem(
+                            name = name,
+                            platformKey = key,
+                            prefStore = prefStore,
+                            onConnect = { onOpenAuthBridge(key) }
+                        )
+                        Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
+                    }
                 }
             }
         }
@@ -226,53 +274,52 @@ fun SettingsDrawerContent(
 }
 
 @Composable
-fun CategoryToggleItem(
+fun M3CategoryToggleItem(
     cat: NewsCategory,
     prefStore: FocalPreferenceStore
 ) {
     var enabled by remember { mutableStateOf(prefStore.isCategoryEnabled(cat.key, true)) }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(InkSurfaceVariant)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+    Card(
+        shape = FocalDimens.shapeCard,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = cat.icon,
-                contentDescription = null,
-                tint = if (enabled) BambooGreen else MistGrey,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = cat.displayName,
-                color = if (enabled) MoonWhite else MistGrey,
-                fontSize = 13.sp
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = FocalDimens.spaceMedium, vertical = FocalDimens.spaceSmall),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = cat.icon,
+                    contentDescription = null,
+                    tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(FocalDimens.iconSizeSmall)
+                )
+                Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+                Text(
+                    text = cat.displayName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = {
+                    enabled = it
+                    prefStore.setCategoryEnabled(cat.key, it)
+                }
             )
         }
-        Switch(
-            checked = enabled,
-            onCheckedChange = {
-                enabled = it
-                prefStore.setCategoryEnabled(cat.key, it)
-            },
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = MoonWhite,
-                checkedTrackColor = BambooGreen,
-                uncheckedThumbColor = MistGrey,
-                uncheckedTrackColor = InkBorder
-            )
-        )
     }
 }
 
 @Composable
-fun SourceToggleItem(
+fun M3SourceToggleItem(
     icon: ImageVector,
     name: String,
     key: String,
@@ -280,47 +327,46 @@ fun SourceToggleItem(
 ) {
     var enabled by remember { mutableStateOf(prefStore.isSourceEnabled(key, true)) }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(InkSurfaceVariant)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+    Card(
+        shape = FocalDimens.shapeCard,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (enabled) BambooGreen else MistGrey,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = name,
-                color = if (enabled) MoonWhite else MistGrey,
-                fontSize = 13.sp
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = FocalDimens.spaceMedium, vertical = FocalDimens.spaceSmall),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(FocalDimens.iconSizeSmall)
+                )
+                Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = enabled,
+                onCheckedChange = {
+                    enabled = it
+                    prefStore.setSourceEnabled(key, it)
+                }
             )
         }
-        Switch(
-            checked = enabled,
-            onCheckedChange = {
-                enabled = it
-                prefStore.setSourceEnabled(key, it)
-            },
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = MoonWhite,
-                checkedTrackColor = BambooGreen,
-                uncheckedThumbColor = MistGrey,
-                uncheckedTrackColor = InkBorder
-            )
-        )
     }
 }
 
 @Composable
-fun AuthPlatformItem(
+fun M3AuthPlatformItem(
     name: String,
     platformKey: String,
     prefStore: FocalPreferenceStore,
@@ -328,63 +374,59 @@ fun AuthPlatformItem(
 ) {
     var isAuthed by remember { mutableStateOf(prefStore.isAiAuthenticated(platformKey)) }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(InkSurfaceVariant)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+    Card(
+        shape = FocalDimens.shapeCard,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // 状态指示圆点
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(if (isAuthed) BambooGreen else CinnabarRed)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = name,
-                color = MoonWhite,
-                fontSize = 13.sp
-            )
-        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = FocalDimens.spaceMedium, vertical = FocalDimens.spaceSmall),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (isAuthed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                )
+                Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
             if (isAuthed) {
                 IconButton(
                     onClick = {
                         prefStore.clearAiAuthSession(platformKey)
                         isAuthed = false
-                    },
-                    modifier = Modifier.size(28.dp)
+                    }
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.LinkOff,
-                        contentDescription = null,
-                        tint = MistGrey,
-                        modifier = Modifier.size(16.dp)
+                        contentDescription = "Disconnect",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(FocalDimens.iconSizeSmall)
                     )
                 }
             } else {
-                Button(
+                FilledTonalButton(
                     onClick = onConnect,
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = BambooGreenSoft),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier.height(28.dp)
+                    shape = FocalDimens.shapeButton,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.height(32.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Key,
-                        contentDescription = null,
-                        tint = BambooGreen,
-                        modifier = Modifier.size(14.dp)
+                    Text(
+                        text = "对接",
+                        style = MaterialTheme.typography.labelSmall
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = "对接", fontSize = 11.sp, color = BambooGreen)
                 }
             }
         }

@@ -1,14 +1,12 @@
 package com.focal.app.feature_ask
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -16,19 +14,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.focal.app.core.storage.FocalPreferenceStore
-import com.focal.app.core.theme.*
-import kotlinx.coroutines.flow.collect
+import com.focal.app.core.theme.FocalDimens
 import kotlinx.coroutines.launch
 
 /**
- * 「问」AI 聚合对话与一键同问对比流：
- * 1. 顶部提供各免费 AI 工具多选勾选（豆包、Kimi、千问、元宝）
- * 2. 一键向所选 AI 并发提问
- * 3. 结果并排/卡片展示，极大方便多维度回答对比
+ * Material 3 官方规范「问」界面重构：
+ * 1. 严格使用 MaterialTheme.colorScheme 与 FocalTypography
+ * 2. M3 FilterChip 规范多选栏（豆包/Kimi/千问/元宝）
+ * 3. 结果对比卡片统一 12dp 圆角，1~2dp 微阴影，规范 24dp 矢量图标
  */
 @Composable
 fun AskScreen(
@@ -51,127 +46,143 @@ fun AskScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(InkBlack)
             .statusBarsPadding()
     ) {
-        // 顶栏：纯图标操作
+        // M3 顶栏
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = FocalDimens.pageHorizontalPadding, vertical = FocalDimens.spaceSmall),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onOpenDrawer) {
-                Icon(
-                    imageVector = Icons.Rounded.Menu,
-                    contentDescription = null,
-                    tint = MoonWhite
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onOpenDrawer) {
+                    Icon(
+                        imageVector = Icons.Rounded.Menu,
+                        contentDescription = "Menu",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(FocalDimens.iconSizeStandard)
+                    )
+                }
+                Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+                Text(
+                    text = "问",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
-            // 清屏 / 重置提问纯图标
             if (answers.isNotEmpty()) {
                 IconButton(onClick = { answers = emptyMap() }) {
                     Icon(
                         imageVector = Icons.Rounded.CleaningServices,
-                        contentDescription = null,
-                        tint = MistGrey
+                        contentDescription = "Clear",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(FocalDimens.iconSizeStandard)
                     )
                 }
             }
         }
 
-        // 目标 AI 选择器栏（极简单字符徽标 + 勾选状态）
+        // M3 AI 模型勾选条
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(horizontal = FocalDimens.pageHorizontalPadding, vertical = FocalDimens.spaceSmall),
+            horizontalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)
         ) {
             AiPlatform.values().forEach { platform ->
                 val isSelected = selectedPlatforms.contains(platform)
                 val isAuthed = prefStore.isAiAuthenticated(platform.key)
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isSelected) BambooGreenSoft else InkSurface)
-                        .border(
-                            width = 1.dp,
-                            color = if (isSelected) BambooGreen else InkBorder,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .clickable {
-                            if (isSelected) {
-                                if (selectedPlatforms.size > 1) {
-                                    selectedPlatforms.remove(platform)
-                                }
-                            } else {
-                                selectedPlatforms.add(platform)
+                FilterChip(
+                    selected = isSelected,
+                    onClick = {
+                        if (isSelected) {
+                            if (selectedPlatforms.size > 1) {
+                                selectedPlatforms.remove(platform)
                             }
+                        } else {
+                            selectedPlatforms.add(platform)
                         }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // 身份保活微圆点
+                    },
+                    shape = FocalDimens.shapePill,
+                    leadingIcon = {
                         Box(
                             modifier = Modifier
-                                .size(6.dp)
+                                .size(8.dp)
                                 .clip(CircleShape)
-                                .background(if (isAuthed) BambooGreen else MistGrey)
+                                .background(
+                                    if (isAuthed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                                )
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                    },
+                    label = {
                         Text(
                             text = platform.displayName,
-                            color = if (isSelected) MoonWhite else MistGrey,
-                            fontSize = 12.sp
+                            style = MaterialTheme.typography.bodySmall
                         )
-                    }
-                }
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = isSelected,
+                        borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        selectedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                    )
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
 
-        // 结果展示与比对区
+        // 对比结果展示区
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
         ) {
             if (answers.isEmpty() && !isSubmitting) {
-                // 极简空状态（无多余废话，仅留白与微图标）
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(32.dp),
+                        .padding(FocalDimens.spaceExtraLarge),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.AutoAwesome,
                         contentDescription = null,
-                        tint = InkBorder,
-                        modifier = Modifier.size(56.dp)
+                        tint = MaterialTheme.colorScheme.outlineVariant,
+                        modifier = Modifier.size(48.dp)
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
                     Text(
-                        text = "一键同问，多模态实时对比",
-                        color = MistGrey,
-                        fontSize = 13.sp
+                        text = "一键同问，多模型流式实时对比",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    contentPadding = PaddingValues(
+                        start = FocalDimens.pageHorizontalPadding,
+                        end = FocalDimens.pageHorizontalPadding,
+                        top = FocalDimens.spaceSmall,
+                        bottom = FocalDimens.spaceLarge
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceMedium)
                 ) {
                     items(selectedPlatforms.toList()) { platform ->
                         val text = answers[platform] ?: if (isSubmitting) "思考中..." else ""
-                        AnswerCompareCard(
+                        M3AnswerCard(
                             platform = platform,
                             content = text
                         )
@@ -180,18 +191,18 @@ fun AskScreen(
             }
         }
 
-        // 底部提问输入栏（纯图标发送）
+        // 底部提问输入栏
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding(),
-            color = InkSurface,
-            tonalElevation = 8.dp
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+            tonalElevation = FocalDimens.elevationFloat
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = FocalDimens.pageHorizontalPadding, vertical = FocalDimens.spaceSmall),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextField(
@@ -200,23 +211,23 @@ fun AskScreen(
                     placeholder = {
                         Text(
                             text = "向所选 AI 同时提问...",
-                            color = MistGrey,
-                            fontSize = 14.sp
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     },
                     modifier = Modifier.weight(1f),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        focusedTextColor = MoonWhite,
-                        unfocusedTextColor = MoonWhite
+                        focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                        unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                        focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
                     ),
                     maxLines = 3
                 )
 
-                IconButton(
+                FilledIconButton(
                     onClick = {
                         if (inputText.isNotBlank() && !isSubmitting) {
                             val prompt = inputText
@@ -224,7 +235,6 @@ fun AskScreen(
                             isSubmitting = true
                             answers = emptyMap()
 
-                            // 并发同时向选中的所有 AI 发起问答流
                             selectedPlatforms.forEach { platform ->
                                 coroutineScope.launch {
                                     val sb = StringBuilder()
@@ -239,16 +249,17 @@ fun AskScreen(
                             isSubmitting = false
                         }
                     },
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(BambooGreenSoft)
+                    shape = CircleShape,
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.ArrowUpward,
-                        contentDescription = null,
-                        tint = BambooGreen,
-                        modifier = Modifier.size(22.dp)
+                        contentDescription = "Send",
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -257,21 +268,19 @@ fun AskScreen(
 }
 
 @Composable
-fun AnswerCompareCard(
+fun M3AnswerCard(
     platform: AiPlatform,
     content: String
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = InkSurface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = FocalDimens.shapeCard,
+        elevation = CardDefaults.cardElevation(defaultElevation = FocalDimens.elevationCard),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+        )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
+        Column(modifier = Modifier.padding(FocalDimens.spaceMedium)) {
             // 顶端品牌徽标与名称
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -279,46 +288,44 @@ fun AnswerCompareCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(BambooGreenSoft),
-                        contentAlignment = Alignment.Center
+                    Surface(
+                        modifier = Modifier.size(26.dp),
+                        shape = FocalDimens.shapeTag,
+                        color = MaterialTheme.colorScheme.primaryContainer
                     ) {
-                        Text(
-                            text = platform.badgeChar,
-                            color = BambooGreen,
-                            fontSize = 12.sp
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = platform.badgeChar,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
                     Text(
                         text = platform.displayName,
-                        color = MoonWhite,
-                        fontSize = 14.sp
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
-                // 复制纯图标
                 Icon(
                     imageVector = Icons.Rounded.ContentCopy,
-                    contentDescription = null,
-                    tint = MistGrey,
+                    contentDescription = "Copy",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(16.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-            Divider(color = InkBorder)
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
 
-            // 回答正文
             Text(
                 text = content,
-                color = MoonWhite,
-                fontSize = 14.sp,
-                lineHeight = 22.sp
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                lineHeight = MaterialTheme.typography.bodyLarge.lineHeight
             )
         }
     }

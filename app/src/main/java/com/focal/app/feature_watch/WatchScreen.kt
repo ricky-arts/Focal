@@ -2,13 +2,13 @@ package com.focal.app.feature_watch
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -17,14 +17,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focal.app.core.storage.FocalPreferenceStore
-import com.focal.app.core.theme.*
+import com.focal.app.core.theme.FocalDimens
 
 /**
- * 「视」长短视频聚合（抖音 + B站）：
- * 卡片沉浸式视频流，纯图标控制（播放、原链、全屏手势）
+ * Material 3 官方规范「视」视频聚合重构：
+ * 1. 严格使用 MaterialTheme.colorScheme 与 FocalTypography
+ * 2. 16:9 标准比例视频缩略图，优雅卡片 12dp 圆角，1~2dp 微阴影
+ * 3. 规范的 24dp 官方矢量图标与 8/16dp 间距模数
  */
 @Composable
 fun WatchScreen(
@@ -42,74 +45,53 @@ fun WatchScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(InkBlack)
             .statusBarsPadding()
     ) {
-        // 顶栏：抽屉图标与平台筛选图标
+        // M3 顶栏
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = FocalDimens.pageHorizontalPadding, vertical = FocalDimens.spaceSmall),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onOpenDrawer) {
-                Icon(
-                    imageVector = Icons.Rounded.Menu,
-                    contentDescription = null,
-                    tint = MoonWhite
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onOpenDrawer) {
+                    Icon(
+                        imageVector = Icons.Rounded.Menu,
+                        contentDescription = "Menu",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(FocalDimens.iconSizeStandard)
+                    )
+                }
+                Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+                Text(
+                    text = "视",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
-            // 纯图标筛选：全部 / 抖音(短) / B站(长)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(if (selectedFilter == "ALL") BambooGreenSoft else InkSurface)
-                        .clickable { selectedFilter = "ALL" },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.AllInclusive,
-                        contentDescription = null,
-                        tint = if (selectedFilter == "ALL") BambooGreen else MistGrey,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(if (selectedFilter == "DY") BambooGreenSoft else InkSurface)
-                        .clickable { selectedFilter = "DY" },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Smartphone, // 抖音竖屏短视频
-                        contentDescription = null,
-                        tint = if (selectedFilter == "DY") BambooGreen else MistGrey,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(if (selectedFilter == "BILI") BambooGreenSoft else InkSurface)
-                        .clickable { selectedFilter = "BILI" },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Tv, // B站横屏长视频
-                        contentDescription = null,
-                        tint = if (selectedFilter == "BILI") BambooGreen else MistGrey,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+            // 纯图标 M3 FilterChips (全部 / 抖音短视频 / B站长视频)
+            Row(horizontalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)) {
+                M3WatchFilterChip(
+                    isSelected = selectedFilter == "ALL",
+                    icon = Icons.Rounded.AllInclusive,
+                    label = "全部",
+                    onClick = { selectedFilter = "ALL" }
+                )
+                M3WatchFilterChip(
+                    isSelected = selectedFilter == "DY",
+                    icon = Icons.Rounded.Smartphone,
+                    label = "短视频",
+                    onClick = { selectedFilter = "DY" }
+                )
+                M3WatchFilterChip(
+                    isSelected = selectedFilter == "BILI",
+                    icon = Icons.Rounded.Tv,
+                    label = "长视频",
+                    onClick = { selectedFilter = "BILI" }
+                )
             }
         }
 
@@ -119,11 +101,16 @@ fun WatchScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            contentPadding = PaddingValues(
+                start = FocalDimens.pageHorizontalPadding,
+                end = FocalDimens.pageHorizontalPadding,
+                top = FocalDimens.spaceSmall,
+                bottom = FocalDimens.spaceLarge
+            ),
+            verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceMedium)
         ) {
             items(filteredVideos, key = { it.id }) { item ->
-                VideoCard(
+                M3VideoCard(
                     item = item,
                     onPlay = {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.videoUrl))
@@ -136,91 +123,137 @@ fun WatchScreen(
 }
 
 @Composable
-fun VideoCard(
+fun M3WatchFilterChip(
+    isSelected: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = isSelected,
+        onClick = onClick,
+        shape = FocalDimens.shapePill,
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(FocalDimens.iconSizeSmall)
+            )
+        },
+        label = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall
+            )
+        },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            iconColor = MaterialTheme.colorScheme.onSurfaceVariant
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = true,
+            selected = isSelected,
+            borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+            selectedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+        )
+    )
+}
+
+@Composable
+fun M3VideoCard(
     item: VideoItem,
     onPlay: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onPlay),
-        colors = CardDefaults.cardColors(containerColor = InkSurface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = FocalDimens.shapeCard,
+        elevation = CardDefaults.cardElevation(defaultElevation = FocalDimens.elevationCard),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+        )
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // 视频虚拟封面区域（带中央播放纯图标）
+            // 16:9 高清缩略图视窗（带半透明微质感遮罩与居中播放按钮）
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
-                    .background(InkSurfaceVariant),
+                    .aspectRatio(16f / 9f)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
-                // 封面意象符号
+                // 缩略图意象大图
                 Text(
                     text = item.coverEmoji,
-                    fontSize = 48.sp
+                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 42.sp)
                 )
 
-                // 纯图标半透明毛玻璃播放按钮
+                // 统一标准 24dp 居中轻质感播放圆钮
                 Box(
                     modifier = Modifier
-                        .size(52.dp)
+                        .size(48.dp)
                         .clip(CircleShape)
-                        .background(InkBlack.copy(alpha = 0.6f)),
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.PlayArrow,
-                        contentDescription = null,
-                        tint = MoonWhite,
-                        modifier = Modifier.size(30.dp)
+                        contentDescription = "Play",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(FocalDimens.iconSizeStandard)
                     )
                 }
 
-                // 左上角平台微标
-                Box(
+                // 左上角平台标签
+                Surface(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(10.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(InkBlack.copy(alpha = 0.75f))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                        .padding(FocalDimens.spaceSmall),
+                    shape = FocalDimens.shapeTag,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
                 ) {
                     Text(
                         text = item.platformTag,
-                        color = if (item.platformTag == "DY") CinnabarRed else PorcelainBlue,
-                        fontSize = 10.sp
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
 
-                // 右下角时长微标
-                Box(
+                // 右下角时长徽标
+                Surface(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(10.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(InkBlack.copy(alpha = 0.75f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .padding(FocalDimens.spaceSmall),
+                    shape = FocalDimens.shapeTag,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
                 ) {
                     Text(
                         text = item.duration,
-                        color = MoonWhite,
-                        fontSize = 10.sp
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
 
-            // 视频信息
-            Column(modifier = Modifier.padding(14.dp)) {
+            // 视频信息排版
+            Column(modifier = Modifier.padding(FocalDimens.spaceMedium)) {
                 Text(
                     text = item.title,
-                    color = MoonWhite,
-                    fontSize = 15.sp,
-                    lineHeight = 20.sp
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+
+                Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -228,21 +261,21 @@ fun VideoCard(
                 ) {
                     Text(
                         text = item.author,
-                        color = MistGrey,
-                        fontSize = 12.sp
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Rounded.Visibility,
                             contentDescription = null,
-                            tint = MistGrey,
-                            modifier = Modifier.size(13.dp)
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = item.playCount,
-                            color = MistGrey,
-                            fontSize = 11.sp
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }

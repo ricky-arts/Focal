@@ -7,9 +7,10 @@ import androidx.security.crypto.MasterKey
 
 /**
  * 用户自定义喜好与三方身份持久化中心
- * 1. 栏目偏好：用户自定义勾选感兴趣的品类（综合、娱乐、体育、科技、财经、国际）
- * 2. 平台源偏好：头条、微博、百度、知乎、抖音、B站、番茄畅听、播客等
- * 3. 身份对接：豆包、Kimi、千问、元宝网页登录拦截的鉴权 Session 硬件级加密存储
+ * 1. 栏目偏好：用户自定义勾选感兴趣的品类
+ * 2. 平台源偏好：头条、微博、百度、知乎、抖音、B站、番茄畅听、喜马拉雅等
+ * 3. 视觉定制：主题模式、自定义背景壁纸、背景透明度 (0.0~1.0)、对比度 (0.5~1.5)
+ * 4. 身份对接：豆包、Kimi、千问、元宝网页登录拦截的鉴权 Session 硬件级加密存储
  */
 class FocalPreferenceStore(context: Context) {
 
@@ -29,6 +30,40 @@ class FocalPreferenceStore(context: Context) {
         "focal_user_prefs",
         Context.MODE_PRIVATE
     )
+
+    // --- 主题模式 ---
+    fun getThemeMode(): String {
+        return commonPrefs.getString("app_theme_mode", "DARK") ?: "DARK"
+    }
+
+    fun setThemeMode(mode: String) {
+        commonPrefs.edit().putString("app_theme_mode", mode).apply()
+    }
+
+    // --- 自定义背景壁纸与滤镜系统 ---
+    fun getWallpaperKey(): String {
+        return commonPrefs.getString("wallpaper_key", "default") ?: "default"
+    }
+
+    fun setWallpaperKey(key: String) {
+        commonPrefs.edit().putString("wallpaper_key", key).apply()
+    }
+
+    fun getWallpaperOpacity(): Float {
+        return commonPrefs.getFloat("wallpaper_opacity", 0.45f) // 默认 45% 透明度，内敛高雅
+    }
+
+    fun setWallpaperOpacity(opacity: Float) {
+        commonPrefs.edit().putFloat("wallpaper_opacity", opacity).apply()
+    }
+
+    fun getWallpaperContrast(): Float {
+        return commonPrefs.getFloat("wallpaper_contrast", 1.0f) // 默认 1.0x 标准对比度
+    }
+
+    fun setWallpaperContrast(contrast: Float) {
+        commonPrefs.edit().putFloat("wallpaper_contrast", contrast).apply()
+    }
 
     // --- 资讯栏目偏好 ---
     fun isCategoryEnabled(categoryKey: String, default: Boolean = true): Boolean {
