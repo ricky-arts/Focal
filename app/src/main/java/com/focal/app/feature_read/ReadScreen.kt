@@ -1,7 +1,5 @@
 package com.focal.app.feature_read
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,9 +17,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.focal.app.core.content.ContentType
+import com.focal.app.core.content.NativeContentExtractor
+import com.focal.app.core.content.StructuredContent
 import com.focal.app.core.storage.FocalPreferenceStore
 import com.focal.app.core.theme.FocalDimens
 import kotlinx.coroutines.launch
@@ -31,15 +31,14 @@ import kotlinx.coroutines.launch
  * 1. 严格使用 MaterialTheme.colorScheme 与 FocalTypography，杜绝硬编码颜色
  * 2. 统一圆角规范 (卡片 12dp, 标签 4dp)，轻微柔和 elevation 1~2dp
  * 3. 规整左右 16dp 安全内边距与 8/16dp 间距模数
- * 4. 优雅缩略图排版支持
- * 5. 加载骨架屏与淡入过渡动画
+ * 4. 点击后由 NativeContentExtractor 提取结构化数据，分流原生渲染，绝不外跳浏览器或 WebView
  */
 @Composable
 fun ReadScreen(
     prefStore: FocalPreferenceStore,
-    onOpenDrawer: () -> Unit
+    onOpenDrawer: () -> Unit,
+    onOpenDetail: (StructuredContent) -> Unit
 ) {
-    val context = LocalContext.current
     var feeds by remember { mutableStateOf(NewsRepository.getFallbackFeeds()) }
     var selectedCategory by remember { mutableStateOf<NewsCategory?>(null) }
     var isLoading by remember { mutableStateOf(false) }
@@ -134,7 +133,6 @@ fun ReadScreen(
             label = "feedTransition"
         ) { loading ->
             if (loading && feeds.isEmpty()) {
-                // 骨架屏占位
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -165,8 +163,19 @@ fun ReadScreen(
                             rank = index + 1,
                             item = item,
                             onClick = {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.url))
-                                context.startActivity(intent)
+                                coroutineScope.launch {
+                                    val result = NativeContentExtractor.extractContent(
+                                        id = item.id,
+                                        title = item.title,
+                                        sourceName = item.sourceName,
+                                        sourceTag = item.sourceTag,
+                                        targetUrl = item.url,
+                                        preferredType = ContentType.ARTICLE
+                                    )
+                                    result.onSuccess { structured ->
+                                        onOpenDetail(structured)
+                                    }
+                                }
                             }
                         )
                     }
@@ -239,7 +248,6 @@ fun M3NewsCard(
                 .padding(FocalDimens.spaceMedium),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 排位序号徽章
             Box(
                 modifier = Modifier
                     .size(24.dp)
@@ -258,7 +266,6 @@ fun M3NewsCard(
 
             Spacer(modifier = Modifier.width(FocalDimens.spaceMedium))
 
-            // 标题与来源信息区
             Column(modifier = Modifier.weight(1f)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -312,7 +319,6 @@ fun M3NewsCard(
                 )
             }
 
-            // 优雅卡片右侧缩略图支持（统一精致 64x64dp 尺寸）
             Spacer(modifier = Modifier.width(FocalDimens.spaceMedium))
             Surface(
                 modifier = Modifier

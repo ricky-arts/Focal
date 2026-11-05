@@ -2,17 +2,21 @@ package com.focal.app.core.storage
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.io.File
+import java.io.FileOutputStream
 
 /**
  * 用户自定义喜好与三方身份持久化中心
  * 1. 栏目偏好：用户自定义勾选感兴趣的品类
  * 2. 平台源偏好：头条、微博、百度、知乎、抖音、B站、番茄畅听、喜马拉雅等
- * 3. 视觉定制：主题模式、自定义背景壁纸、背景透明度 (0.0~1.0)、对比度 (0.5~1.5)
+ * 3. 视觉定制：主题模式、自定义背景壁纸、自定义上传图片路径、背景透明度 (0.0~1.0)、对比度 (0.5~1.5)
  * 4. 身份对接：豆包、Kimi、千问、元宝网页登录拦截的鉴权 Session 硬件级加密存储
+ * 5. 内容收藏夹：保存用户喜好的文章、视频、图集
  */
-class FocalPreferenceStore(context: Context) {
+class FocalPreferenceStore(private val context: Context) {
 
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -47,6 +51,28 @@ class FocalPreferenceStore(context: Context) {
 
     fun setWallpaperKey(key: String) {
         commonPrefs.edit().putString("wallpaper_key", key).apply()
+    }
+
+    fun getCustomWallpaperPath(): String? {
+        val path = commonPrefs.getString("custom_wallpaper_path", null)
+        return if (path != null && File(path).exists()) path else null
+    }
+
+    fun saveCustomWallpaperFromUri(uri: Uri): Boolean {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return false
+            val file = File(context.filesDir, "custom_wallpaper.jpg")
+            FileOutputStream(file).use { outputStream ->
+                inputStream.copyTo(outputStream)
+            }
+            commonPrefs.edit()
+                .putString("custom_wallpaper_path", file.absolutePath)
+                .putString("wallpaper_key", "custom")
+                .apply()
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun getWallpaperOpacity(): Float {
@@ -86,6 +112,18 @@ class FocalPreferenceStore(context: Context) {
 
     fun setSourceEnabled(sourceKey: String, enabled: Boolean) {
         commonPrefs.edit().putBoolean("source_$sourceKey", enabled).apply()
+    }
+
+    // --- 收藏夹功能持久化 ---
+    fun isFavorite(contentId: String): Boolean {
+        return commonPrefs.getBoolean("fav_$contentId", false)
+    }
+
+    fun toggleFavorite(contentId: String): Boolean {
+        val current = isFavorite(contentId)
+        val next = !current
+        commonPrefs.edit().putBoolean("fav_$contentId", next).apply()
+        return next
     }
 
     // --- AI 身份对接持久化（Cookie / Token / Session）---

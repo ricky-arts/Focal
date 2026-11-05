@@ -2,6 +2,7 @@ package com.focal.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
@@ -9,10 +10,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.focal.app.core.content.StructuredContent
 import com.focal.app.core.navigation.FocalSection
 import com.focal.app.core.storage.FocalPreferenceStore
 import com.focal.app.core.theme.*
 import com.focal.app.feature_ask.AskScreen
+import com.focal.app.feature_detail.NativeDetailScreen
 import com.focal.app.feature_listen.ListenScreen
 import com.focal.app.feature_read.ReadScreen
 import com.focal.app.feature_set.AuthBridgeDialog
@@ -22,9 +25,10 @@ import kotlinx.coroutines.launch
 
 /**
  * Material 3 架构主界面：
- * 1. 动态挂载主题配色系统与动态背景壁纸/透明度/对比度滤镜容器
+ * 1. 动态挂载主题配色系统与动态背景壁纸/透明度/对比度滤镜容器（支持自定义相册图片）
  * 2. 侧边独立展开的设置抽屉 (ModalNavigationDrawer)
  * 3. 底部符合 M3 标准的纯矢量图标导航栏，跟随主题自适应色彩与水波纹按压反馈
+ * 4. 彻底移除所有内置 WebView 与浏览器外跳，全屏流转原生详情页
  */
 class MainActivity : ComponentActivity() {
 
@@ -49,100 +53,120 @@ class MainActivity : ComponentActivity() {
 
                 var currentSection by remember { mutableStateOf(FocalSection.READ) }
                 var authBridgePlatform by remember { mutableStateOf<String?>(null) }
+                var activeNativeDetail by remember { mutableStateOf<StructuredContent?>(null) }
 
                 // 响应式壁纸状态
                 var wallpaperKey by remember { mutableStateOf(prefStore.getWallpaperKey()) }
+                var customImagePath by remember { mutableStateOf(prefStore.getCustomWallpaperPath()) }
                 var opacity by remember { mutableFloatStateOf(prefStore.getWallpaperOpacity()) }
                 var contrast by remember { mutableFloatStateOf(prefStore.getWallpaperContrast()) }
+
+                // 返回拦截：如果在原生详情页中，按返回键优先退出详情页
+                BackHandler(enabled = activeNativeDetail != null) {
+                    activeNativeDetail = null
+                }
 
                 // 外层：壁纸与对比度滤镜容器
                 WallpaperFilterContainer(
                     wallpaperKey = wallpaperKey,
+                    customImagePath = customImagePath,
                     opacity = opacity,
                     contrast = contrast
                 ) {
-                    ModalNavigationDrawer(
-                        drawerState = drawerState,
-                        drawerContent = {
-                            SettingsDrawerContent(
-                                prefStore = prefStore,
-                                onOpenAuthBridge = { platformKey ->
-                                    scope.launch { drawerState.close() }
-                                    authBridgePlatform = platformKey
-                                },
-                                onCloseDrawer = {
-                                    scope.launch { drawerState.close() }
-                                    // 抽屉关闭时刷新壁纸配置
-                                    wallpaperKey = prefStore.getWallpaperKey()
-                                    opacity = prefStore.getWallpaperOpacity()
-                                    contrast = prefStore.getWallpaperContrast()
-                                }
-                            )
-                        }
-                    ) {
-                        Scaffold(
-                            containerColor = androidx.compose.ui.graphics.Color.Transparent,
-                            bottomBar = {
-                                NavigationBar(
-                                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
-                                    tonalElevation = FocalDimens.elevationCard
-                                ) {
-                                    FocalSection.values().forEach { section ->
-                                        val isSelected = currentSection == section
-                                        NavigationBarItem(
-                                            selected = isSelected,
-                                            onClick = { currentSection = section },
-                                            icon = {
-                                                Icon(
-                                                    imageVector = section.icon,
-                                                    contentDescription = section.token,
-                                                    modifier = Modifier.size(FocalDimens.iconSizeStandard)
+                    // 全屏原生详情页面呈现 (图文 / 视频 / 图集)
+                    if (activeNativeDetail != null) {
+                        NativeDetailScreen(
+                            content = activeNativeDetail!!,
+                            prefStore = prefStore,
+                            onBack = { activeNativeDetail = null }
+                        )
+                    } else {
+                        ModalNavigationDrawer(
+                            drawerState = drawerState,
+                            drawerContent = {
+                                SettingsDrawerContent(
+                                    prefStore = prefStore,
+                                    onOpenAuthBridge = { platformKey ->
+                                        scope.launch { drawerState.close() }
+                                        authBridgePlatform = platformKey
+                                    },
+                                    onCloseDrawer = {
+                                        scope.launch { drawerState.close() }
+                                        // 抽屉关闭时刷新壁纸配置
+                                        wallpaperKey = prefStore.getWallpaperKey()
+                                        customImagePath = prefStore.getCustomWallpaperPath()
+                                        opacity = prefStore.getWallpaperOpacity()
+                                        contrast = prefStore.getWallpaperContrast()
+                                    }
+                                )
+                            }
+                        ) {
+                            Scaffold(
+                                containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                                bottomBar = {
+                                    NavigationBar(
+                                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                                        tonalElevation = FocalDimens.elevationCard
+                                    ) {
+                                        FocalSection.values().forEach { section ->
+                                            val isSelected = currentSection == section
+                                            NavigationBarItem(
+                                                selected = isSelected,
+                                                onClick = { currentSection = section },
+                                                icon = {
+                                                    Icon(
+                                                        imageVector = section.icon,
+                                                        contentDescription = section.token,
+                                                        modifier = Modifier.size(FocalDimens.iconSizeStandard)
+                                                    )
+                                                },
+                                                colors = NavigationBarItemDefaults.colors(
+                                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                                                 )
-                                            },
-                                            colors = NavigationBarItemDefaults.colors(
-                                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                                             )
-                                        )
+                                        }
                                     }
                                 }
-                            }
-                        ) { innerPadding ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(bottom = innerPadding.calculateBottomPadding())
-                            ) {
-                                AnimatedContent(
-                                    targetState = currentSection,
-                                    transitionSpec = { fadeIn() togetherWith fadeOut() },
-                                    label = "sectionTransition"
-                                ) { section ->
-                                    when (section) {
-                                        FocalSection.READ -> ReadScreen(
-                                            prefStore = prefStore,
-                                            onOpenDrawer = { scope.launch { drawerState.open() } }
-                                        )
-                                        FocalSection.WATCH -> WatchScreen(
-                                            prefStore = prefStore,
-                                            onOpenDrawer = { scope.launch { drawerState.open() } }
-                                        )
-                                        FocalSection.LISTEN -> ListenScreen(
-                                            prefStore = prefStore,
-                                            onOpenDrawer = { scope.launch { drawerState.open() } }
-                                        )
-                                        FocalSection.ASK -> AskScreen(
-                                            prefStore = prefStore,
-                                            onOpenDrawer = { scope.launch { drawerState.open() } }
-                                        )
+                            ) { innerPadding ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(bottom = innerPadding.calculateBottomPadding())
+                                ) {
+                                    AnimatedContent(
+                                        targetState = currentSection,
+                                        transitionSpec = { fadeIn() togetherWith fadeOut() },
+                                        label = "sectionTransition"
+                                    ) { section ->
+                                        when (section) {
+                                            FocalSection.READ -> ReadScreen(
+                                                prefStore = prefStore,
+                                                onOpenDrawer = { scope.launch { drawerState.open() } },
+                                                onOpenDetail = { detail -> activeNativeDetail = detail }
+                                            )
+                                            FocalSection.WATCH -> WatchScreen(
+                                                prefStore = prefStore,
+                                                onOpenDrawer = { scope.launch { drawerState.open() } },
+                                                onOpenDetail = { detail -> activeNativeDetail = detail }
+                                            )
+                                            FocalSection.LISTEN -> ListenScreen(
+                                                prefStore = prefStore,
+                                                onOpenDrawer = { scope.launch { drawerState.open() } }
+                                            )
+                                            FocalSection.ASK -> AskScreen(
+                                                prefStore = prefStore,
+                                                onOpenDrawer = { scope.launch { drawerState.open() } }
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
 
-                    // AI 身份对接沙箱窗口
+                    // 原生 AI 凭证持久化弹窗
                     if (authBridgePlatform != null) {
                         AuthBridgeDialog(
                             platformKey = authBridgePlatform!!,

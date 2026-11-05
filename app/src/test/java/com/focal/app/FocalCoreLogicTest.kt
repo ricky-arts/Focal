@@ -1,10 +1,13 @@
 package com.focal.app
 
+import com.focal.app.core.content.ContentType
+import com.focal.app.core.content.NativeContentExtractor
 import com.focal.app.feature_ask.AiPlatform
 import com.focal.app.feature_read.NewsCategory
 import com.focal.app.feature_read.NewsRepository
 import com.focal.app.feature_watch.VideoRepository
 import com.focal.app.feature_listen.AudioRepository
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -14,13 +17,11 @@ class FocalCoreLogicTest {
     fun testNewsRepositoryMultiPlatformAggregation() {
         val news = NewsRepository.getFallbackFeeds()
         assertTrue("News feeds should not be empty", news.isNotEmpty())
-        // 验证多平台存在
         val tags = news.map { it.sourceTag }.toSet()
         assertTrue("Should contain Toutiao (TT)", tags.contains("TT"))
         assertTrue("Should contain Weibo (WB)", tags.contains("WB"))
         assertTrue("Should contain Baidu (BD)", tags.contains("BD"))
         assertTrue("Should contain Zhihu (ZH)", tags.contains("ZH"))
-        // 验证热度数值降序排列
         for (i in 0 until news.size - 1) {
             assertTrue("Items must be sorted by hot score descending", news[i].hotScoreNum >= news[i + 1].hotScoreNum)
         }
@@ -35,6 +36,51 @@ class FocalCoreLogicTest {
     }
 
     @Test
+    fun testNativeContentExtractorMultiType() = runBlocking {
+        // 1. 图文提取
+        val articleRes = NativeContentExtractor.extractContent(
+            id = "a_1",
+            title = "最新科技突破测试报告",
+            sourceName = "科技观察",
+            sourceTag = "TECH",
+            targetUrl = "https://example.com/article",
+            preferredType = ContentType.ARTICLE
+        )
+        assertTrue(articleRes.isSuccess)
+        val article = articleRes.getOrNull()!!
+        assertEquals(ContentType.ARTICLE, article.contentType)
+        assertTrue(article.blocks.isNotEmpty())
+
+        // 2. 视频提取
+        val videoRes = NativeContentExtractor.extractContent(
+            id = "v_1",
+            title = "B站精选视频：大模型架构演进",
+            sourceName = "Bilibili",
+            sourceTag = "BILI",
+            targetUrl = "https://www.bilibili.com/video/BV123",
+            preferredType = ContentType.VIDEO
+        )
+        assertTrue(videoRes.isSuccess)
+        val video = videoRes.getOrNull()!!
+        assertEquals(ContentType.VIDEO, video.contentType)
+        assertNotNull(video.videoUrl)
+
+        // 3. 图集提取
+        val galleryRes = NativeContentExtractor.extractContent(
+            id = "g_1",
+            title = "川西风光精选图集",
+            sourceName = "摄影专栏",
+            sourceTag = "PHOTO",
+            targetUrl = "https://example.com/gallery",
+            preferredType = ContentType.GALLERY
+        )
+        assertTrue(galleryRes.isSuccess)
+        val gallery = galleryRes.getOrNull()!!
+        assertEquals(ContentType.GALLERY, gallery.contentType)
+        assertTrue(gallery.galleryImages.isNotEmpty())
+    }
+
+    @Test
     fun testVideoRepositoryAggregation() {
         val videos = VideoRepository.getFallbackFeeds()
         assertTrue("Video feeds should not be empty", videos.isNotEmpty())
@@ -46,7 +92,6 @@ class FocalCoreLogicTest {
     fun testAudioRepositoryFanqieAndXimalaya() {
         val audios = AudioRepository.getFallbackAudioList()
         assertTrue("Audios should not be empty", audios.isNotEmpty())
-        // 验证番茄畅听与喜马拉雅
         assertTrue("Should contain Fanqie audiobook", audios.any { it.platformTag == "番茄" })
         assertTrue("Should contain Ximalaya audiobook", audios.any { it.platformTag == "喜马" })
         assertTrue("Should contain Podcast item", audios.any { it.platformTag == "播客" })

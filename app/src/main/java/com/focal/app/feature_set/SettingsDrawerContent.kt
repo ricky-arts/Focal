@@ -1,5 +1,8 @@
 package com.focal.app.feature_set
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,8 +26,9 @@ import com.focal.app.feature_read.NewsCategory
 /**
  * Material 3 规范侧边独立设置抽屉重构：
  * 1. 严格使用 MaterialTheme.colorScheme 与 FocalTypography
- * 2. 增加视觉画境配置：壁纸选择、透明度滑块 (0.0~1.0)、对比度滑块 (0.5~1.5)
+ * 2. 增加视觉画境配置：预置壁纸选择、自定义相册图片上传、透明度滑块 (0.0~1.0)、对比度滑块 (0.5~1.5)
  * 3. 规范圆角 (12dp 卡片, 8dp 按钮, 4dp 标签) 与标准 24dp 矢量图标
+ * 4. 彻底移除 WebView 依赖
  */
 @Composable
 fun SettingsDrawerContent(
@@ -35,6 +39,20 @@ fun SettingsDrawerContent(
     var wallpaperKey by remember { mutableStateOf(prefStore.getWallpaperKey()) }
     var opacity by remember { mutableFloatStateOf(prefStore.getWallpaperOpacity()) }
     var contrast by remember { mutableFloatStateOf(prefStore.getWallpaperContrast()) }
+    var hasCustomImage by remember { mutableStateOf(prefStore.getCustomWallpaperPath() != null) }
+
+    // 原生系统相册图片安全选取器
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val success = prefStore.saveCustomWallpaperFromUri(uri)
+            if (success) {
+                wallpaperKey = "custom"
+                hasCustomImage = true
+            }
+        }
+    }
 
     Surface(
         modifier = Modifier
@@ -129,6 +147,26 @@ fun SettingsDrawerContent(
                                         )
                                     )
                                 }
+                            }
+
+                            Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
+
+                            // 自定义相册图片上传按钮
+                            FilledTonalButton(
+                                onClick = { photoPickerLauncher.launch("image/*") },
+                                shape = FocalDimens.shapeButton,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AddPhotoAlternate,
+                                    contentDescription = "Upload Wallpaper",
+                                    modifier = Modifier.size(FocalDimens.iconSizeSmall)
+                                )
+                                Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+                                Text(
+                                    text = if (hasCustomImage && wallpaperKey == "custom") "已应用自定义图片 (点击更换)" else "选择手机图片设为背景",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                             }
 
                             Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))

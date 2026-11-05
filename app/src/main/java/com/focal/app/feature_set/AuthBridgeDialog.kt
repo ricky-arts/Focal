@@ -1,31 +1,25 @@
 package com.focal.app.feature_set
 
-import android.annotation.SuppressLint
-import android.webkit.CookieManager
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.focal.app.core.storage.FocalPreferenceStore
 import com.focal.app.core.theme.FocalDimens
 
 /**
- * 身份对接浏览器窗口 (Auth Bridge Dialog) M3 重构
+ * 纯原生 Compose 身份对接凭据绑定弹窗
+ * 彻底移除 WebView 与网页内置加载，杜绝任何 WebView 漏洞与开销。
  */
-@SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun AuthBridgeDialog(
     platformKey: String,
@@ -33,18 +27,8 @@ fun AuthBridgeDialog(
     onDismiss: () -> Unit,
     onSuccess: () -> Unit
 ) {
-    val platformUrl = remember(platformKey) {
-        when (platformKey) {
-            "doubao" -> "https://www.doubao.com/chat/"
-            "kimi" -> "https://kimi.moonshot.cn/"
-            "qwen" -> "https://tongyi.aliyun.com/qianwen/"
-            "yuanbao" -> "https://yuanbao.tencent.com/"
-            else -> "https://www.doubao.com"
-        }
-    }
-
-    var interceptedCookies by remember { mutableStateOf("") }
-    var hasValidSession by remember { mutableStateOf(false) }
+    var tokenInput by remember { mutableStateOf(prefStore.getAiAuthSession(platformKey) ?: "") }
+    var isSaved by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -52,90 +36,124 @@ fun AuthBridgeDialog(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth(0.92f)
+                .wrapContentHeight()
                 .padding(FocalDimens.spaceMedium),
             shape = FocalDimens.shapeCard,
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = FocalDimens.elevationFloat
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // 顶栏：平台信息与一键捕获/完成
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(FocalDimens.spaceLarge)
+            ) {
+                // 顶栏：平台信息与关闭
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = FocalDimens.spaceMedium, vertical = FocalDimens.spaceSmall),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(if (hasValidSession) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
-                        )
+                        Surface(
+                            shape = FocalDimens.shapeTag,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Rounded.VpnKey,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(FocalDimens.iconSizeSmall)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
                         Text(
-                            text = "身份对接 · $platformKey",
+                            text = "原生凭据对接 · $platformKey",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
-                    Row {
-                        if (hasValidSession) {
-                            IconButton(onClick = {
-                                prefStore.saveAiAuthSession(platformKey, interceptedCookies)
-                                onSuccess()
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Rounded.CheckCircle,
-                                    contentDescription = "Confirm",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(FocalDimens.iconSizeStandard)
-                                )
-                            }
-                        }
-                        IconButton(onClick = onDismiss) {
-                            Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = "Close",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(FocalDimens.iconSizeStandard)
-                            )
-                        }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(FocalDimens.iconSizeStandard)
+                        )
                     }
                 }
 
+                Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
 
-                // 核心内置 Web 鉴权沙箱
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { context ->
-                        WebView(context).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.databaseEnabled = true
-
-                            webViewClient = object : WebViewClient() {
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    super.onPageFinished(view, url)
-                                    val cookieManager = CookieManager.getInstance()
-                                    val cookies = cookieManager.getCookie(url) ?: ""
-                                    if (cookies.contains("session") ||
-                                        cookies.contains("token") ||
-                                        cookies.contains("uid") ||
-                                        cookies.length > 50) {
-                                        interceptedCookies = cookies
-                                        hasValidSession = true
-                                    }
-                                }
-                            }
-                            loadUrl(platformUrl)
-                        }
-                    }
+                Text(
+                    text = "纯原生安全对接通道：已彻底摒弃内置 WebView 网页加载，避免广告弹窗与隐私泄露。请输入或粘贴您在该平台的用户 Session 凭证以实现端侧持久化同步。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight
                 )
+
+                Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
+
+                OutlinedTextField(
+                    value = tokenInput,
+                    onValueChange = { tokenInput = it },
+                    label = { Text("平台 Session / Token 凭证") },
+                    placeholder = { Text("粘贴 sessionid 或 auth token...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = FocalDimens.shapeButton,
+                    maxLines = 4,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(FocalDimens.spaceLarge))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            prefStore.clearAiAuthSession(platformKey)
+                            tokenInput = ""
+                            onDismiss()
+                        }
+                    ) {
+                        Text("清空解绑")
+                    }
+
+                    Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+
+                    Button(
+                        onClick = {
+                            if (tokenInput.isNotBlank()) {
+                                prefStore.saveAiAuthSession(platformKey, tokenInput.trim())
+                                onSuccess()
+                            }
+                        },
+                        shape = FocalDimens.shapeButton,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(FocalDimens.iconSizeSmall)
+                        )
+                        Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+                        Text("保存并持久化")
+                    }
+                }
             }
         }
     }

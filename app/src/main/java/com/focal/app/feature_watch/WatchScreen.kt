@@ -1,7 +1,5 @@
 package com.focal.app.feature_watch
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,27 +14,32 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.focal.app.core.content.ContentType
+import com.focal.app.core.content.NativeContentExtractor
+import com.focal.app.core.content.StructuredContent
 import com.focal.app.core.storage.FocalPreferenceStore
 import com.focal.app.core.theme.FocalDimens
+import kotlinx.coroutines.launch
 
 /**
  * Material 3 官方规范「视」视频聚合重构：
  * 1. 严格使用 MaterialTheme.colorScheme 与 FocalTypography
  * 2. 16:9 标准比例视频缩略图，优雅卡片 12dp 圆角，1~2dp 微阴影
  * 3. 规范的 24dp 官方矢量图标与 8/16dp 间距模数
+ * 4. 点击拉起 App 内原生 ExoPlayer 播放器页面，彻底移除外部浏览器
  */
 @Composable
 fun WatchScreen(
     prefStore: FocalPreferenceStore,
-    onOpenDrawer: () -> Unit
+    onOpenDrawer: () -> Unit,
+    onOpenDetail: (StructuredContent) -> Unit
 ) {
-    val context = LocalContext.current
     var videoList by remember { mutableStateOf(VideoRepository.getFallbackFeeds()) }
     var selectedFilter by remember { mutableStateOf("ALL") }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         videoList = VideoRepository.fetchRealVideoFeeds()
@@ -113,8 +116,19 @@ fun WatchScreen(
                 M3VideoCard(
                     item = item,
                     onPlay = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.videoUrl))
-                        context.startActivity(intent)
+                        coroutineScope.launch {
+                            val result = NativeContentExtractor.extractContent(
+                                id = item.id,
+                                title = item.title,
+                                sourceName = if (item.platformTag == "BILI") "哔哩哔哩" else "抖音精选",
+                                sourceTag = item.platformTag,
+                                targetUrl = item.videoUrl,
+                                preferredType = ContentType.VIDEO
+                            )
+                            result.onSuccess { structured ->
+                                onOpenDetail(structured)
+                            }
+                        }
                     }
                 )
             }
@@ -179,7 +193,6 @@ fun M3VideoCard(
         )
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // 16:9 高清缩略图视窗（带半透明微质感遮罩与居中播放按钮）
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -187,13 +200,11 @@ fun M3VideoCard(
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
-                // 缩略图意象大图
                 Text(
                     text = item.coverEmoji,
                     style = MaterialTheme.typography.titleLarge.copy(fontSize = 42.sp)
                 )
 
-                // 统一标准 24dp 居中轻质感播放圆钮
                 Box(
                     modifier = Modifier
                         .size(48.dp)
@@ -209,7 +220,6 @@ fun M3VideoCard(
                     )
                 }
 
-                // 左上角平台标签
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -225,7 +235,6 @@ fun M3VideoCard(
                     )
                 }
 
-                // 右下角时长徽标
                 Surface(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -242,7 +251,6 @@ fun M3VideoCard(
                 }
             }
 
-            // 视频信息排版
             Column(modifier = Modifier.padding(FocalDimens.spaceMedium)) {
                 Text(
                     text = item.title,
