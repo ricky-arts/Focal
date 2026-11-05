@@ -5,6 +5,7 @@ import com.focal.app.core.content.NativeContentExtractor
 import com.focal.app.core.sources.ToutiaoSourceParser
 import com.focal.app.core.sources.WeiboSourceParser
 import com.focal.app.core.sources.ZhihuSourceParser
+import com.focal.app.core.storage.FocalPreferenceStore
 import com.focal.app.feature_ask.AiPlatform
 import com.focal.app.feature_read.NewsCategory
 import com.focal.app.feature_read.NewsRepository

@@ -24,9 +24,10 @@ import kotlinx.coroutines.launch
 
 /**
  * 优化重构「阅」资讯板块：
- * 1. 采用全板块统一左图右文卡片 (UnifiedMediaCard)，优先展示各源首图/封面缩略图；
- * 2. 支持下拉刷新 (Refresh) 与上滑触底自动加载更多 (Pagination)；
- * 3. 规整 M3 规范，数据拉取失败或为空时给出友好交互与一键重试。
+ * 1. 初始直接挂载优质种子包，网络并发抓取完成后热更新，绝不展示空列表；
+ * 2. 栏目过滤弹性容错：若选定细分栏目无数据，平滑展示全网热门，不白屏；
+ * 3. 采用全板块统一左图右文卡片 (UnifiedMediaCard)，优先展示各源首图/封面缩略图；
+ * 4. 支持下拉刷新 (Refresh) 与上滑触底自动加载更多 (Pagination)。
  */
 @Composable
 fun ReadScreen(
@@ -34,7 +35,8 @@ fun ReadScreen(
     onOpenDrawer: () -> Unit,
     onOpenDetail: (StructuredContent) -> Unit
 ) {
-    var feeds by remember { mutableStateOf<List<NewsItem>>(emptyList()) }
+    // 初始即挂载种子数据，确保冷启动绝对不呈现空屏幕
+    var feeds by remember { mutableStateOf(NewsRepository.getFallbackFeeds(page = 1)) }
     var selectedCategory by remember { mutableStateOf<NewsCategory?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var isLoadingMore by remember { mutableStateOf(false) }
@@ -44,19 +46,19 @@ fun ReadScreen(
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    // 初始或刷新数据
     fun refreshData() {
         coroutineScope.launch {
             isLoading = true
             currentPage = 1
             hasMore = true
             val items = NewsRepository.fetchUnifiedRankings(prefStore, page = 1)
-            feeds = items
+            if (items.isNotEmpty()) {
+                feeds = items
+            }
             isLoading = false
         }
     }
 
-    // 分页加载更多
     fun loadMoreData() {
         if (isLoadingMore || !hasMore) return
         coroutineScope.launch {
@@ -73,7 +75,6 @@ fun ReadScreen(
         }
     }
 
-    // 触底监听自动触发加载更多
     val shouldLoadMore = remember {
         derivedStateOf {
             val totalItems = listState.layoutInfo.totalItemsCount
@@ -161,139 +162,98 @@ fun ReadScreen(
 
         Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
 
-        // 列表区与分页
-        AnimatedContent(
-            targetState = isLoading && feeds.isEmpty(),
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
-            label = "feedLoadingTransition"
-        ) { initialLoading ->
-            if (initialLoading) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = FocalDimens.pageHorizontalPadding),
-                    verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)
-                ) {
-                    repeat(6) {
-                        M3SkeletonCard()
-                    }
-                }
-            } else if (feeds.isEmpty()) {
-                // 空状态与重试
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(FocalDimens.spaceLarge),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Rounded.ErrorOutline,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
-                        Text(
-                            text = "未获取到该栏目内容或网络受限",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(FocalDimens.spaceMedium))
-                        FilledTonalButton(onClick = { refreshData() }) {
-                            Text("点击重新抓取")
-                        }
-                    }
-                }
+        // 计算当前显示列表：若选定栏目有匹配则过滤，否则回退全量
+        val displayList = remember(selectedCategory, feeds) {
+            if (selectedCategory == null) {
+                feeds
             } else {
-                val displayList = remember(selectedCategory, feeds) {
-                    if (selectedCategory == null) feeds else feeds.filter { it.category == selectedCategory }
-                }
+                val match = feeds.filter { it.category == selectedCategory }
+                if (match.isNotEmpty()) match else feeds
+            }
+        }
 
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = FocalDimens.pageHorizontalPadding,
-                        end = FocalDimens.pageHorizontalPadding,
-                        top = FocalDimens.spaceSmall,
-                        bottom = FocalDimens.spaceLarge
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)
-                ) {
-                    itemsIndexed(displayList, key = { _, item -> item.id }) { index, item ->
-                        UnifiedMediaCard(
-                            title = item.title,
-                            sourceName = item.sourceName,
-                            timeAgo = item.timeAgo,
-                            hotScoreDisplay = item.hotScoreDisplay,
-                            rank = index + 1,
-                            thumbnailUrl = item.thumbnailUrl,
-                            isVideo = false,
-                            isGallery = item.title.contains("图集") || item.title.contains("组图"),
-                            fallbackIcon = when (item.category) {
-                                NewsCategory.TECH -> Icons.Rounded.Memory
-                                NewsCategory.ENTERTAINMENT -> Icons.Rounded.TheaterComedy
-                                NewsCategory.SPORTS -> Icons.Rounded.SportsBasketball
-                                NewsCategory.FINANCE -> Icons.Rounded.TrendingUp
-                                NewsCategory.WORLD -> Icons.Rounded.Public
-                                else -> Icons.Rounded.Article
-                            },
-                            onClick = {
-                                coroutineScope.launch {
-                                    val result = NativeContentExtractor.extractContent(
-                                        id = item.id,
-                                        title = item.title,
-                                        sourceName = item.sourceName,
-                                        sourceTag = item.sourceTag,
-                                        targetUrl = item.url,
-                                        preferredType = ContentType.ARTICLE
-                                    )
-                                    result.onSuccess { structured ->
-                                        onOpenDetail(structured)
-                                    }
-                                }
-                            }
-                        )
-                    }
-
-                    // 底部上滑加载更多指示器
-                    item {
-                        if (isLoadingMore) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = FocalDimens.spaceMedium),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
-                                    Text(
-                                        text = "正在深度挖掘更多全网热点...",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        } else if (!hasMore) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = FocalDimens.spaceMedium),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "— 已汇聚全网最新全部内容 —",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = FocalDimens.pageHorizontalPadding,
+                end = FocalDimens.pageHorizontalPadding,
+                top = FocalDimens.spaceSmall,
+                bottom = FocalDimens.spaceLarge
+            ),
+            verticalArrangement = Arrangement.spacedBy(FocalDimens.spaceSmall)
+        ) {
+            itemsIndexed(displayList, key = { _, item -> item.id }) { index, item ->
+                UnifiedMediaCard(
+                    title = item.title,
+                    sourceName = item.sourceName,
+                    timeAgo = item.timeAgo,
+                    hotScoreDisplay = item.hotScoreDisplay,
+                    rank = index + 1,
+                    thumbnailUrl = item.thumbnailUrl,
+                    isVideo = false,
+                    isGallery = item.title.contains("图集") || item.title.contains("组图"),
+                    fallbackIcon = when (item.category) {
+                        NewsCategory.TECH -> Icons.Rounded.Memory
+                        NewsCategory.ENTERTAINMENT -> Icons.Rounded.TheaterComedy
+                        NewsCategory.SPORTS -> Icons.Rounded.SportsBasketball
+                        NewsCategory.FINANCE -> Icons.Rounded.TrendingUp
+                        NewsCategory.WORLD -> Icons.Rounded.Public
+                        else -> Icons.Rounded.Article
+                    },
+                    onClick = {
+                        coroutineScope.launch {
+                            val result = NativeContentExtractor.extractContent(
+                                id = item.id,
+                                title = item.title,
+                                sourceName = item.sourceName,
+                                sourceTag = item.sourceTag,
+                                targetUrl = item.url,
+                                preferredType = ContentType.ARTICLE
+                            )
+                            result.onSuccess { structured ->
+                                onOpenDetail(structured)
                             }
                         }
+                    }
+                )
+            }
+
+            // 底部上滑加载更多指示器
+            item {
+                if (isLoadingMore) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = FocalDimens.spaceMedium),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
+                            Text(
+                                text = "正在深度挖掘更多全网热点...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else if (!hasMore) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = FocalDimens.spaceMedium),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "— 已汇聚全网最新全部内容 —",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
                     }
                 }
             }
@@ -340,17 +300,4 @@ fun M3CategoryChip(
             selectedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
         )
     )
-}
-
-@Composable
-fun M3SkeletonCard() {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(84.dp),
-        shape = FocalDimens.shapeCard,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-        )
-    ) {}
 }
