@@ -14,28 +14,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.focal.app.core.content.ContentType
-import com.focal.app.core.content.NativeContentExtractor
-import com.focal.app.core.content.StructuredContent
 import com.focal.app.core.storage.FocalPreferenceStore
 import com.focal.app.core.theme.FocalDimens
 import com.focal.app.core.ui.UnifiedMediaCard
 import kotlinx.coroutines.launch
 
 /**
- * 优化重构「阅」资讯板块：
- * 1. 初始直接挂载优质种子包，网络并发抓取完成后热更新，绝不展示空列表；
- * 2. 栏目过滤弹性容错：若选定细分栏目无数据，平滑展示全网热门，不白屏；
- * 3. 采用全板块统一左图右文卡片 (UnifiedMediaCard)，优先展示各源首图/封面缩略图；
- * 4. 支持下拉刷新 (Refresh) 与上滑触底自动加载更多 (Pagination)。
+ * 生产级「阅」资讯/热榜看板：
+ * 1. 采用全板块统一左图右文卡片 (UnifiedMediaCard)，优先展示各源首图/封面缩略图；
+ * 2. 支持下拉刷新 (Refresh) 与上滑触底自动加载更多 (Pagination)；
+ * 3. 规整 M3 规范，数据拉取失败或为空时给出友好交互与一键重试。
  */
 @Composable
 fun ReadScreen(
     prefStore: FocalPreferenceStore,
     onOpenDrawer: () -> Unit,
-    onOpenDetail: (StructuredContent) -> Unit
+    onOpenDetail: (NewsItem) -> Unit
 ) {
-    // 初始即挂载种子数据，确保冷启动绝对不呈现空屏幕
     var feeds by remember { mutableStateOf(NewsRepository.getFallbackFeeds(page = 1)) }
     var selectedCategory by remember { mutableStateOf<NewsCategory?>(null) }
     var isLoading by remember { mutableStateOf(false) }
@@ -117,7 +112,7 @@ fun ReadScreen(
                 }
                 Spacer(modifier = Modifier.width(FocalDimens.spaceSmall))
                 Text(
-                    text = "阅",
+                    text = "焦点 · 热榜",
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -162,7 +157,6 @@ fun ReadScreen(
 
         Spacer(modifier = Modifier.height(FocalDimens.spaceSmall))
 
-        // 计算当前显示列表：若选定栏目有匹配则过滤，否则回退全量
         val displayList = remember(selectedCategory, feeds) {
             if (selectedCategory == null) {
                 feeds
@@ -191,7 +185,7 @@ fun ReadScreen(
                     hotScoreDisplay = item.hotScoreDisplay,
                     rank = index + 1,
                     thumbnailUrl = item.thumbnailUrl,
-                    isVideo = false,
+                    isVideo = item.sourceTag == "BILI",
                     isGallery = item.title.contains("图集") || item.title.contains("组图"),
                     fallbackIcon = when (item.category) {
                         NewsCategory.TECH -> Icons.Rounded.Memory
@@ -201,25 +195,10 @@ fun ReadScreen(
                         NewsCategory.WORLD -> Icons.Rounded.Public
                         else -> Icons.Rounded.Article
                     },
-                    onClick = {
-                        coroutineScope.launch {
-                            val result = NativeContentExtractor.extractContent(
-                                id = item.id,
-                                title = item.title,
-                                sourceName = item.sourceName,
-                                sourceTag = item.sourceTag,
-                                targetUrl = item.url,
-                                preferredType = ContentType.ARTICLE
-                            )
-                            result.onSuccess { structured ->
-                                onOpenDetail(structured)
-                            }
-                        }
-                    }
+                    onClick = { onOpenDetail(item) }
                 )
             }
 
-            // 底部上滑加载更多指示器
             item {
                 if (isLoadingMore) {
                     Box(

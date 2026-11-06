@@ -1,72 +1,90 @@
-# Focal (聚点)
+# Focal (焦点)
 
-> **Slogan:** *Your interest, the world's Focal.*
+> **Slogan:** *Your interest, the world's Focal. 任何你关注的都是焦点。*
 
-零服务端、纯端侧聚合（Client-Side Aggregation）、Google Material 3 现代规范交互、**全原生排版渲染（彻底移除 WebView）**、**全板块深度多源矩阵（借鉴 BiliPai 架构）与 Coil 图片双重缓存**的 Android 应用。
-
----
-
-## 一、 核心痛点与解法
-1. **解决痛点**:
-   - 告别在多个独立 App 之间反复横跳切换。
-   - 彻底摒弃内置 WebView 浏览器模式，所有内容（图文、视频、图集）走 App 内原生 Compose 渲染。
-   - 深度多源抓取（借鉴 BiliPai 架构，整合 B站全站热门、日榜分区流、入站必刷，头条、微博热搜、知乎热榜、百度热搜、Reddit、抖音、番茄畅听、喜马拉雅等），支持无限下拉刷新与触底分页加载。
-   - 统一左图右文卡片规范，集成 Coil 异步加载与 100MB 磁盘/内存双重缓存，自动提取各源封面图，配有柔和 M3 矢量占位图。
-   - 自动清洗网页中恶心的牛皮癣广告、营销推广、悬浮弹窗与无关推荐，只保留纯净主体内容。
-   - 开放自定义上传本地相册图片作为 App 沉浸式背景壁纸，支持透明度与对比度实时微调。
-
-2. **多形态内容全原生渲染**:
-   - 📰 **图文资讯 (Native Article)**：行间距舒适、字体大小 A-/A+ 无级可调、正文高清大图点击弹窗预览，跟随全局主题自适应。
-   - 🎬 **原生视频 (Native Video)**：内置 AndroidX Media3 ExoPlayer 原生控件，支持播放/暂停、滑动条进度拖动、静音切换、切后台自动暂停。
-   - 🖼️ **原生图集 (Native Gallery)**：原生 `HorizontalPager` 左右丝滑翻页预览、右上角页码指示、双指无级缩放手势。
-   - ⭐ **统一原生操作**：全屏详情页均提供原生收藏持久化、系统级标准分享 (`Intent.ACTION_SEND`)、一键正文复制。
+专注于全平台资讯与热榜聚合的高性能生产级 Android 原生应用，配套生产级 BFF 数据聚合网关与全文去广告清洗引擎。
 
 ---
 
-## 二、 UI/UX 架构亮点 (Material 3 体系)
+## 一、 系统架构设计
 
-### 1. 全板块统一左图右文卡片 (`UnifiedMediaCard`)
-- **左侧缩略图**：固定宽高比（资讯 `116dp × 76dp`，视频 `116dp × 76dp`，听书 `76dp × 76dp`），统一圆角 8dp。
-- **动态微标 (BiliPai 风格)**：视频类叠加半透明播放图标与悬浮时长微标，图集类叠加图集角标；无图类展示主题色淡底与矢量占位符，绝不出现生硬黑块。
-- **右侧信息排版**：上部 2 行标题加粗截断，底栏【来源微标 + 时间/UP主 + 播放量/弹幕/热度指数】精准对齐。
-
-### 2. 深度多源与分页引擎 (`core/sources/`)
-- 吸收 BiliPai 架构，每个数据源（头条、微博、知乎、百度、Reddit 等）解耦为独立解析器 `ContentSourceParser`；
-- 控制单次拉取数量 (10~15条) 避免被反爬，提供下拉刷新与触底滑动监听，流式无缝加载。
-
-### 3. 沉浸式壁纸与滤镜工坊 (自定义相册图片上传支持)
-- 在侧边抽屉中内置画境配置：
-  * 支持壁纸预设切换（竹影、水乡、落日、纯粹等）；
-  * **支持用户选择手机相册图片**作为专属背景壁纸；
-  * **透明度滑块 (0.1 ~ 1.0)**：动态控制背景透光度，卡片背后的意境自然漫透；
-  * **对比度滑块 (0.5 ~ 1.5)**：通过底层 `ColorMatrix` 进行动态对比度调节；
-  * 配置持久化保存，冷启动无缝还原。
-
----
-
-## 三、 工程结构
 ```
-focal-android/
-├── app/
-│   ├── src/main/
-│   │   ├── AndroidManifest.xml       # 声明前台音频播放服务与网络权限
-│   │   └── java/com/focal/app/
-│   │       ├── MainActivity.kt        # M3 主容器与动态壁纸/对比度滤镜容器
-│   │       ├── core/
-│   │       │   ├── content/           # 结构化数据契约与原生内容清洗提取引擎
-│   │       │   ├── navigation/        # 阅/视/听/问 纯图标意象枚举
-│   │       │   ├── network/           # OkHttp + Coil 双重缓存池构建
-│   │       │   ├── sources/           # 解耦的独立数据源解析器矩阵 (头条/微博/知乎/百度/Reddit)
-│   │       │   ├── storage/           # 偏好配置、自定义壁纸存储与硬件加密身份
-│   │       │   ├── theme/             # M3 ColorScheme、Dimens度量与Wallpaper容器
-│   │       │   └── ui/                # UnifiedMediaCard 统一左图右文卡片组件
-│   │       ├── feature_read/          # 「阅」全网热度排行榜与分页加载
-│   │       ├── feature_watch/         # 「视」多源视频流与分页 (吸收 bilipai 架构)
-│   │       ├── feature_listen/        # 「听」番茄/喜马/播客后台音频流与分页
-│   │       ├── feature_ask/           # 「问」多AI同问对比引擎
-│   │       ├── feature_detail/        # 原生图文阅读器、原生视频播放器、原生图集画廊
-│   │       └── feature_set/           # 「设」侧边抽屉设置与壁纸微调面板
-│   └── build.gradle.kts
-├── settings.gradle.kts
-└── local.properties
+focal-platform/
+├── focal-server/                         # [BFF 数据聚合与清洗网关]
+│   ├── package.json
+│   ├── src/
+│   │   ├── index.ts                      # 服务入口与统一 API 暴露
+│   │   ├── types/schema.ts               # AST 结构化正文与评论数据契约
+│   │   ├── engine/
+│   │   │   ├── rule-engine.ts            # Hot-Fix 动态热修规则引擎 (免发版更新选择器)
+│   │   │   ├── ast-converter.ts          # Cheerio 广告清洗并转化为纯原生 AST
+│   │   │   └── user-agent-pool.ts        # 反爬防封随机 UA 池与重试引擎
+│   │   ├── cache/redis.ts                # Redis 多级缓存与分布式互斥锁
+│   │   ├── cron/hotlist-poller.ts        # Cron 后台静默轮询 (热榜对原站 0 实时穿透)
+│   │   ├── proxy/image-proxy.ts          # 防盗链图片流代理 (防 403 裂图)
+│   │   └── adapters/                     # 插件化多源适配器
+│   │       ├── zhihu.adapter.ts          # 知乎热榜 + 回答 AST + 热评
+│   │       ├── bilibili.adapter.ts       # B站热门 + DASH 音视频轨 + 楼中楼评论
+│   │       ├── weibo.adapter.ts          # 微博热搜 + 话题 AST + 互动
+│   │       ├── ithome.adapter.ts         # IT之家新闻 + 极客图文
+│   │       ├── kr36.adapter.ts           # 36氪创投快讯
+│   │       └── sspai.adapter.ts          # 少数派效率专栏
+│   └── tests/server.test.ts              # 自动化核心单元测试
+│
+└── focal-android/                        # [Android 客户端 (纯原生 Jetpack Compose)]
+    ├── app/src/main/java/com/focal/app/
+    │   ├── MainActivity.kt               # M3 沉浸式单容器
+    │   ├── core/
+    │   │   ├── model/UnifiedModels.kt    # AST 结构化节点与强类型实体
+    │   │   ├── network/                  # FocalApiClient 与 OkHttp + Coil 双重缓存
+    │   │   ├── storage/db/               # Room Database 本地离线正文缓存
+    │   │   ├── storage/AccountHubStore.kt# 账号绑定中心与硬件加密存储
+    │   │   └── ui/UnifiedMediaCard.kt    # 统一左图右文卡片组件
+    │   ├── feature_renderer/             # 原生渲染引擎
+    │   │   ├── NativeArticleRenderer.kt  # 1.6~1.8x 黄金行距与无级字体缩放
+    │   │   ├── NativeDashPlayerView.kt   # B站 DASH 音视频独立双轨并发合成播放器
+    │   │   └── PreFetchManager.kt        # 列表滑动后台静默预热 (秒开率 100%)
+    │   ├── feature_comment/              # 原生评论交互
+    │   │   └── CommentBottomSheet.kt     # 半屏精彩热评抽屉 + 楼中楼回复
+    │   └── feature_set/                  # 频道定制与背景画境微调
+```
+
+---
+
+## 二、 5 大核心技术亮点
+
+1. **BFF 智能多级缓存与防刷限流 (Rate Limiting)**：
+   - 热榜数据由后台 Cron Job 每 3 分钟自动轮询写入 Redis，用户查询直接读缓存，**对源站 0 实时穿透**；
+   - 详情接口采用 Lazy-Cache（缓存 2 小时）与分布式互斥锁防止高并发击穿；
+   - 提供 IP 滑动窗口限流中间件，拒绝恶意爬取与刷量。
+2. **动态规则与热修复引擎 (Hot-Fix Rules)**：
+   - 网页 class 改动或广告结构变异时，后台秒级下发新选择器 JSON，零停机更新，彻底告别频繁发版。
+3. **客户端离线优先与智能预加载 (Pre-fetching)**：
+   - 停留在热榜时，`PreFetchManager` 异步在后台预加载前 8 篇正文入本地 Room DB，并通知 Coil 预下载首图；
+   - 用户点击瞬间 **0 毫秒即刻渲染**，且完全支持弱网/地铁断网离线阅读。
+4. **B站音视频分离 (DASH) 原生并发合成播放**：
+   - 服务端提取 1080P/720P 独立 `video.m4s` 与 `audio.m4s`；
+   - 客户端基于 Media3 `MergingMediaSource` 硬件级解耦并发实时合成播放，彻底解决无声痛点与 480P 模糊限制。
+5. **多平台登录态账号绑定中心 (Account Hub)**：
+   - 抽离出独立的授权沙箱，拦截提取用户 Cookie 并通过 Android Jetpack `EncryptedSharedPreferences` 硬件级加密保存；
+   - 日常浏览与正文阅读 100% 纯原生 Compose 渲染，彻底无 WebView；发评点赞时安全带凭据由 BFF 代理交互。
+
+---
+
+## 三、 快速启动与构建说明
+
+### 1. 运行 BFF 网关服务端
+```bash
+cd focal-platform/focal-server
+bun install  # 或 npm install
+bun test     # 执行单元测试
+bun run dev  # 启动服务在 http://localhost:8080
+```
+
+### 2. 编译 Android 客户端
+```bash
+cd focal-android
+./gradlew testDebugUnitTest
+./gradlew assembleRelease
+# 安装产物位于 app/build/outputs/apk/release/app-release.apk
 ```
